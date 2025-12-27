@@ -1,0 +1,904 @@
+import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import 'dart:math';
+import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import '../../utils/theme_provider.dart';
+import '../../utils/squat_logic.dart';
+import '../../utils/squat_processor.dart';
+import '../../utils/pose_analyzer.dart';
+import '../../widgets/pose_painter.dart';
+
+/// Live Stream Screen matching Live_Stream.py logic
+class SessionLiveStreamScreen extends StatefulWidget {
+  final VoidCallback? onBack;
+
+  const SessionLiveStreamScreen({super.key, this.onBack});
+
+  @override
+  State<SessionLiveStreamScreen> createState() => _SessionLiveStreamScreenState();
+}
+
+class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
+  String _selectedMode = 'Beginner';
+  int _targetReps = 10;
+  int _targetSets = 3;
+  bool _isStreamActive = false;
+  bool _isProcessing = false;
+  bool _calibrating = false;
+  int _calibrationCounter = 0;
+  List<Pose> _poses = [];
+  
+  CameraController? _cameraController;
+  bool _isCameraInitialized = false;
+  PoseDetector? _poseDetector;
+  late SquatProcessor _squatProcessor;
+  SquatResult? _lastResult;
+  String? _selectedSide; // 'left' or 'right' based on shoulder-to-foot span
+  
+  @override
+  void initState() {
+    super.initState();
+    _initializeProcessor();
+    _initializeCamera();
+    _initializePoseDetectorAsync();
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.stopImageStream();
+    _cameraController?.dispose();
+    _poseDetector?.close();
+    super.dispose();
+  }
+
+  Future<void> _initializePoseDetectorAsync() async {
+    try {
+      final options = PoseDetectorOptions(
+        mode: PoseDetectionMode.stream,
+        model: PoseDetectionModel.accurate,
+      );
+      _poseDetector = PoseDetector(options: options);
+      if (mounted) {
+        setState(() {}); // Notify that pose detector is ready
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Pose detector error: $e');
+      }
+    }
+  }
+
+  void _initializeProcessor() {
+    final thresholds = _selectedMode == 'Beginner'
+        ? PoseThresholdConfig.beginner()
+        : PoseThresholdConfig.pro();
+    _squatProcessor = SquatProcessor(
+      thresholds: thresholds,
+      targetReps: _targetReps,
+      targetSets: _targetSets,
+    );
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isDenied) {
+        _showPermissionDeniedDialog();
+        return;
+      }
+
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        _showErrorDialog('No cameras available');
+        return;
+      }
+
+      _cameraController = CameraController(
+        cameras.first,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+
+      await _cameraController!.initialize();
+      if (!mounted) return;
+      setState(() => _isCameraInitialized = true);
+    } catch (e) {
+      _showErrorDialog('Camera error: $e');
+    }
+  }
+
+  Future<void> _startSession() async {
+    if (!_isCameraInitialized) return;
+
+    _initializeProcessor();
+    _squatProcessor.reset();
+
+    setState(() {
+      _isStreamActive = true;
+      _calibrating = true;
+      _calibrationCounter = 0;
+      _lastResult = null;
+      _poses = [];
+    });
+
+    await _cameraController!.startImageStream(_processImage);
+  }
+
+  Future<void> _processImage(CameraImage image) async {
+    if (_isProcessing || _poseDetector == null) return;
+    _isProcessing = true;
+
+    try {
+      final inputImage = _convertToInputImage(image);
+      if (inputImage == null) {
+        _isProcessing = false;
+        return;
+      }
+
+      final poses = await _poseDetector!.processImage(inputImage);
+      if (poses.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _poses = [];
+            _lastResult = SquatResult(
+              correctReps: _lastResult?.correctReps ?? 0,
+              incorrectReps: _lastResult?.incorrectReps ?? 0,
+              currentSet: _lastResult?.currentSet ?? 0,
+              feedback: 'No person detected',
+              isRepCounted: false,
+              kneeAngle: 0,
+              hipAngle: 0,
+              ankleAngle: 0,
+              currentState: null,
+              sessionComplete: false,
+              jointsDetected: false,
+              displayMessage: 'No person detected',
+              waitingForReset: false,
+              messageTimer: 0,
+            );
+          });
+        }
+        _isProcessing = false;
+        return;
+      }
+
+      // Calibration/visibility gating - check offset angle first
+      if (_calibrating) {
+        final pose = poses.first;
+        final nose = pose.landmarks[PoseLandmarkType.nose];
+        final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+        final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+        final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
+        final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
+
+        // Check offset angle (posture alignment)
+        if (nose != null && leftShoulder != null && rightShoulder != null) {
+          final offsetAngle = _calculateOffsetAngle(
+            leftShoulder.x, leftShoulder.y,
+            rightShoulder.x, rightShoulder.y,
+            nose.x, nose.y,
+          );
+
+          if (offsetAngle > 50) {
+            // Posture not aligned - ask to turn
+            _calibrationCounter = 0;
+            _selectedSide = null; // Clear selected side
+            if (mounted) {
+              setState(() {
+                _poses = poses;
+                _lastResult = SquatResult(
+                  correctReps: 0,
+                  incorrectReps: 0,
+                  currentSet: 0,
+                  feedback: '',
+                  isRepCounted: false,
+                  kneeAngle: 0,
+                  hipAngle: 0,
+                  ankleAngle: 0,
+                  currentState: null,
+                  sessionComplete: false,
+                  jointsDetected: false,
+                  displayMessage: 'POSTURE NOT ALIGNED!!! (TURN LEFT or RIGHT)',
+                  waitingForReset: false,
+                  messageTimer: 0,
+                );
+              });
+            }
+            _isProcessing = false;
+            return;
+          } else {
+            // Posture aligned - determine side immediately for skeleton display
+            _determineSelectedSide(poses.first);
+          }
+        }
+
+        // Check if nose (head) and at least one ankle (foot) are visible on screen
+        // ML Kit returns pixel coordinates; remove 0..1 bounds and rely on likelihood
+        final bool noseVisible = nose != null && (nose.likelihood) > 0.5;
+        final bool lVisible = leftAnkle != null && (leftAnkle.likelihood) > 0.5;
+        final bool rVisible = rightAnkle != null && (rightAnkle.likelihood) > 0.5;
+
+        String calibMessage;
+        // Only proceed if head AND at least one foot are visible
+        if (noseVisible && (lVisible || rVisible)) {
+          _calibrationCounter = (_calibrationCounter + 1).clamp(0, 30);
+          calibMessage = 'PERFECT! HOLD POSITION...';
+          if (_calibrationCounter >= 30) {
+            _calibrating = false;
+            // Don't return here - continue to process the frame
+          }
+        } else {
+          _calibrationCounter = 0;
+          if (!noseVisible) {
+            calibMessage = 'MOVE YOUR HEAD INTO FRAME';
+          } else if (!lVisible && !rVisible) {
+            calibMessage = 'MOVE AT LEAST ONE FOOT INTO FRAME';
+          } else {
+            calibMessage = 'PLEASE STAND IN FRAME';
+          }
+        }
+
+        // If still calibrating, show calibration message and progress bar
+        if (_calibrating) {
+          if (mounted) {
+            setState(() {
+              _poses = poses;
+              _lastResult = SquatResult(
+                correctReps: _lastResult?.correctReps ?? 0,
+                incorrectReps: _lastResult?.incorrectReps ?? 0,
+                currentSet: _lastResult?.currentSet ?? 0,
+                feedback: '',
+                isRepCounted: false,
+                kneeAngle: _lastResult?.kneeAngle ?? 0,
+                hipAngle: _lastResult?.hipAngle ?? 0,
+                ankleAngle: _lastResult?.ankleAngle ?? 0,
+                currentState: _lastResult?.currentState,
+                sessionComplete: false,
+                jointsDetected: true,
+                displayMessage: calibMessage,
+                waitingForReset: _lastResult?.waitingForReset ?? false,
+                messageTimer: _lastResult?.messageTimer ?? 0,
+              );
+            });
+          }
+          _isProcessing = false;
+          return;
+        }
+      }
+
+      // Process frame with squat processor (after calibration)
+      final pResult = _squatProcessor.processFrame(poses.first);
+      final result = _mapProcessorResult(pResult);
+      debugPrint('[SquatProcessor] correct=${result.correctReps}, incorrect=${result.incorrectReps}, feedback=${result.feedback}, kneeAngle=${result.kneeAngle.toStringAsFixed(1)}');
+
+      if (mounted) {
+        setState(() {
+          _poses = poses;
+          _lastResult = result;
+        });
+      }
+
+      if (result.sessionComplete) {
+        await _stopSession();
+      }
+    } catch (e) {
+      debugPrint('[SessionLiveStream] Error: $e');
+    }
+
+    _isProcessing = false;
+  }
+
+  Future<void> _stopSession() async {
+    await _cameraController?.stopImageStream();
+    if (mounted) {
+      setState(() {
+        _isStreamActive = false;
+      });
+    }
+    _showSummaryDialog();
+  }
+
+  InputImage? _convertToInputImage(CameraImage image) {
+    try {
+      // Concatenate YUV420 planes into single byte list
+      final bytesBuilder = BytesBuilder(copy: false);
+      for (final Plane plane in image.planes) {
+        bytesBuilder.add(plane.bytes);
+      }
+      final bytes = bytesBuilder.toBytes();
+
+      // Use camera sensor orientation for rotation
+      final sensor = _cameraController?.description.sensorOrientation;
+      final rotation = InputImageRotationValue.fromRawValue(sensor ?? 0);
+      if (rotation == null) return null;
+
+      final metadata = InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: InputImageFormat.nv21,
+        bytesPerRow: image.planes.first.bytesPerRow,
+      );
+
+      return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  SquatResult _mapProcessorResult(SquatProcessResult r) {
+    return SquatResult(
+      correctReps: r.correctReps,
+      incorrectReps: r.incorrectReps,
+      currentSet: r.currentSet,
+      feedback: r.feedback,
+      isRepCounted: r.isRepCounted,
+      hipAngle: r.hipAngle,
+      kneeAngle: r.kneeAngle,
+      ankleAngle: r.ankleAngle,
+      currentState: r.currentState,
+      sessionComplete: _squatProcessor.sessionComplete,
+      jointsDetected: true,
+      displayMessage: '',
+      waitingForReset: false,
+      messageTimer: 0,
+    );
+  }
+
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Camera Permission Required'),
+        content: const Text('Enable camera access in settings.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              openAppSettings();
+              Navigator.pop(context);
+            },
+            child: const Text('Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  double _calculateOffsetAngle(double lShoulderX, double lShoulderY,
+      double rShoulderX, double rShoulderY, double noseX, double noseY) {
+    final p1X = lShoulderX - noseX;
+    final p1Y = lShoulderY - noseY;
+    final p2X = rShoulderX - noseX;
+    final p2Y = rShoulderY - noseY;
+
+    final dot = p1X * p2X + p1Y * p2Y;
+    final norm1 = sqrt(p1X * p1X + p1Y * p1Y);
+    final norm2 = sqrt(p2X * p2X + p2Y * p2Y);
+    if (norm1 == 0 || norm2 == 0) return 0;
+
+    final cosTheta = (dot / (norm1 * norm2)).clamp(-1.0, 1.0);
+    return (180 / pi) * acos(cosTheta);
+  }
+
+  void _determineSelectedSide(Pose pose) {
+    final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+    final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+    final leftFoot = pose.landmarks[PoseLandmarkType.leftFootIndex];
+    final rightFoot = pose.landmarks[PoseLandmarkType.rightFootIndex];
+
+    if (leftShoulder != null && rightShoulder != null && leftFoot != null && rightFoot != null) {
+      final leftSpan = (leftFoot.y - leftShoulder.y).abs();
+      final rightSpan = (rightFoot.y - rightShoulder.y).abs();
+      _selectedSide = leftSpan >= rightSpan ? 'left' : 'right';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (_isStreamActive) {
+      return _buildStreamingView(isDark);
+    }
+
+    return _buildSetupView(isDark);
+  }
+
+  Widget _buildStreamingView(bool isDark) {
+    final result = _lastResult;
+    final isWaiting = result?.waitingForReset ?? false;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Camera preview
+        if (_isCameraInitialized && _cameraController != null)
+          CameraPreview(_cameraController!)
+        else
+          Container(color: Colors.black),
+
+        // Skeleton overlay - show when posture is aligned (selectedSide is set)
+        if (_poses.isNotEmpty && (result?.jointsDetected ?? false) && _selectedSide != null)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: PosePainter(
+                poses: _poses,
+                imageSize: Size(
+                  _cameraController!.value.previewSize!.height,
+                  _cameraController!.value.previewSize!.width,
+                ),
+                hipAngle: result?.hipAngle,
+                kneeAngle: result?.kneeAngle,
+                ankleAngle: result?.ankleAngle,
+                drawReferences: true,
+                selectedSide: _selectedSide,
+              ),
+            ),
+          ),
+
+        // Top-right counters (CORRECT/INCORRECT/SET)
+        Positioned(
+          top: 20,
+          right: 20,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildBadge('CORRECT: ${result?.correctReps ?? 0}', Colors.green),
+              const SizedBox(height: 8),
+              _buildBadge('INCORRECT: ${result?.incorrectReps ?? 0}', Colors.red),
+              const SizedBox(height: 8),
+              _buildBadge('SET: ${result?.currentSet ?? 0} / $_targetSets', Colors.blue),
+            ],
+          ),
+        ),
+
+        // Posture alignment warning (if angle too high)
+        if ((result?.displayMessage ?? '').contains('POSTURE NOT ALIGNED'))
+          Positioned(
+            bottom: 200,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  result!.displayMessage!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Calibration progress bar (during calibration phase)
+        if (_calibrating)
+          Positioned(
+            bottom: 80,
+            left: 40,
+            right: 40,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 200,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white54, width: 1),
+                  ),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(7),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: (_calibrationCounter / 30).clamp(0.0, 1.0),
+                          child: Container(
+                            color: _calibrationCounter >= 30 ? Colors.green : Colors.blue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${(_calibrationCounter / 30 * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Feedback messages at BOTTOM (LOWER YOUR HIPS, BEND FORWARD, etc.)
+        if (!_calibrating &&
+          result != null &&
+          result.feedback.isNotEmpty &&
+          !result.feedback.contains('Good form') &&
+          !isWaiting)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 100,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(
+                  color: _getFeedbackColor(result.feedback),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  result.feedback,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Angle labels (displayed on skeleton)
+        if ((result?.jointsDetected ?? false) && !isWaiting && !_calibrating)
+          Positioned(
+            right: 20,
+            bottom: 150,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Current State Indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getStateColor(result?.currentState),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'State: ${result?.currentState ?? "?"}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Hip: ${result!.hipAngle.toStringAsFixed(0)}°',
+                  style: const TextStyle(
+                    color: Colors.lightGreen,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Knee: ${result.kneeAngle.toStringAsFixed(0)}°',
+                  style: const TextStyle(
+                    color: Colors.lightGreen,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Ankle: ${result.ankleAngle.toStringAsFixed(0)}°',
+                  style: const TextStyle(
+                    color: Colors.lightGreen,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Freeze message (central, during reset phase)
+        if (isWaiting && (result?.displayMessage ?? '').isNotEmpty)
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.orange[800],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                result!.displayMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+
+        // Start/Stop button
+        Positioned(
+          bottom: 20,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: ElevatedButton(
+              onPressed: _stopSession,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'End Session',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Color _getFeedbackColor(String feedback) {
+    if (feedback.contains('BEND')) return const Color(0xFF0099FF);
+    if (feedback.contains('LOWER')) return Colors.yellow;
+    if (feedback.contains('KNEE FALLING') || feedback.contains('DEEP')) {
+      return Colors.red;
+    }
+    return Colors.orange;
+  }
+
+  Color _getStateColor(String? state) {
+    switch (state) {
+      case 's1':
+        return Colors.green;
+      case 's2':
+        return Colors.orange;
+      case 's3':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void _showSummaryDialog() {
+    if (!mounted || _lastResult == null) return;
+
+    final totalReps = _lastResult!.correctReps + _lastResult!.incorrectReps;
+    final accuracy = totalReps > 0
+        ? (_lastResult!.correctReps / totalReps * 100).toStringAsFixed(1)
+        : '0.0';
+
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Session Summary'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Correct: ${_lastResult!.correctReps}'),
+              Text('Incorrect: ${_lastResult!.incorrectReps}'),
+              Text('Total: $totalReps'),
+              Text('Accuracy: $accuracy%'),
+              Text('Sets: ${_lastResult!.currentSet}/$_targetSets'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSetupView(bool isDark) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Settings
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161B22) : Colors.grey[50],
+              border: Border(bottom: BorderSide(color: isDark ? Colors.white12 : Colors.grey[300]!)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t('Workout Settings', 'إعدادات التمرين'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: _modeButton('Beginner', _selectedMode == 'Beginner', () => setState(() => _selectedMode = 'Beginner'))),
+                    const SizedBox(width: 12),
+                    Expanded(child: _modeButton('Pro', _selectedMode == 'Pro', () => setState(() => _selectedMode = 'Pro'))),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: _buildDropdown(t('Reps per Set', 'التكرارات'), _targetReps, 20, (v) => setState(() => _targetReps = v))),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildDropdown(t('Total Sets', 'المجموعات'), _targetSets, 10, (v) => setState(() => _targetSets = v))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Camera preview
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: double.infinity,
+                    height: 400,
+                    color: Colors.black12,
+                    child: _isCameraInitialized && _cameraController != null
+                        ? CameraPreview(_cameraController!)
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.videocam, size: 48, color: Colors.grey[400]),
+                                const SizedBox(height: 12),
+                                Text(t('Initializing camera...', 'جاري تهيئة الكاميرا...'), style: TextStyle(color: Colors.grey[600])),
+                              ],
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF64B5F6),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _isCameraInitialized ? _startSession : null,
+                    child: Text(t('Start Session', 'بدء الجلسة'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Info
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF64B5F6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF64B5F6).withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(t('📷 Camera Requirements', '📷 متطلبات الكاميرا'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64B5F6))),
+                  const SizedBox(height: 8),
+                  Text(
+                    t('• Good lighting\n• Full body visible (head to feet)\n• 2-3 meters from camera\n• Stable position',
+                        '• إضاءة جيدة\n• الجسم مرئي بالكامل (من الرأس إلى القدمين)\n• 2-3 أمتار من الكاميرا\n• موضع ثابت'),
+                    style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87, height: 1.6),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeButton(String label, bool isSelected, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF64B5F6) : (isDark ? const Color(0xFF1C1F26) : Colors.grey[100]),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? const Color(0xFF64B5F6) : (isDark ? Colors.white12 : Colors.grey[300]!)),
+        ),
+        child: Center(child: Text(label, style: TextStyle(color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black54), fontWeight: FontWeight.w600))),
+      ),
+    );
+  }
+
+  Widget _buildDropdown(String label, int value, int max, Function(int) onChanged) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black54)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1F26) : Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
+          ),
+          child: DropdownButton<int>(
+            value: value,
+            isExpanded: true,
+            underline: const SizedBox(),
+            dropdownColor: isDark ? const Color(0xFF161B22) : Colors.white,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14),
+            onChanged: (v) => v != null ? onChanged(v) : null,
+            items: List.generate(max, (i) => i + 1).map((n) => DropdownMenuItem(value: n, child: Text(n.toString()))).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
