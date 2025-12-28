@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
 import '../../utils/patient_bookings_manager.dart';
@@ -29,119 +30,58 @@ class PatientBookScreen extends StatefulWidget {
 class _PatientBookScreenState extends State<PatientBookScreen> {
   final TextEditingController _searchController = TextEditingController();
   final AvailabilityManager _availabilityManager = AvailabilityManager();
-  
-  // Mock doctor data with availability
-  final List<DoctorInfo> _allDoctors = [
-    DoctorInfo(
-      id: '1',
-      name: 'Dr. Ahmed Hassan',
-      specialty: 'Physiotherapy Specialist',
-      rating: 4.8,
-      experience: '10 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '2',
-      name: 'Dr. Sarah Ali',
-      specialty: 'Sports Medicine',
-      rating: 4.9,
-      experience: '8 years',
-      image: '👩‍⚕️',
-    ),
-    DoctorInfo(
-      id: '3',
-      name: 'Dr. Mohammed Khalid',
-      specialty: 'Orthopedic Physical Therapy',
-      rating: 4.7,
-      experience: '12 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '4',
-      name: 'Dr. Fatima Noor',
-      specialty: 'Rehabilitation Specialist',
-      rating: 4.9,
-      experience: '7 years',
-      image: '👩‍⚕️',
-    ),
-    DoctorInfo(
-      id: '5',
-      name: 'Dr. Karim Mansour',
-      specialty: 'Sports Injury Recovery',
-      rating: 4.6,
-      experience: '9 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '6',
-      name: 'Dr. Layla Hassan',
-      specialty: 'Post-Surgical Rehabilitation',
-      rating: 4.8,
-      experience: '11 years',
-      image: '👩‍⚕️',
-    ),
-    DoctorInfo(
-      id: '7',
-      name: 'Dr. Omar Zaki',
-      specialty: 'Pediatric Physiotherapy',
-      rating: 4.7,
-      experience: '6 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '8',
-      name: 'Dr. Nadia Karim',
-      specialty: 'Neurological Rehabilitation',
-      rating: 4.9,
-      experience: '10 years',
-      image: '👩‍⚕️',
-    ),
-    DoctorInfo(
-      id: '9',
-      name: 'Dr. Hassan Ibrahim',
-      specialty: 'Back Pain Specialist',
-      rating: 4.8,
-      experience: '14 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '10',
-      name: 'Dr. Amira Amin',
-      specialty: 'Geriatric Physiotherapy',
-      rating: 4.7,
-      experience: '8 years',
-      image: '👩‍⚕️',
-    ),
-    DoctorInfo(
-      id: '11',
-      name: 'Dr. Youssef Rashid',
-      specialty: 'Sports Performance',
-      rating: 4.9,
-      experience: '9 years',
-      image: '👨‍⚕️',
-    ),
-    DoctorInfo(
-      id: '12',
-      name: 'Dr. Hana Samir',
-      specialty: 'Cardiac Rehabilitation',
-      rating: 4.6,
-      experience: '7 years',
-      image: '👩‍⚕️',
-    ),
-  ];
-
+  List<DoctorInfo> _allDoctors = [];
   List<DoctorInfo> _filteredDoctors = [];
-  String _searchQuery = '';
+  bool _isLoadingDoctors = true;
 
   @override
   void initState() {
     super.initState();
-    _availabilityManager.addListener(_onSlotsChanged);
-    // Filter doctors to only those with available slots
-    _filteredDoctors = _allDoctors
-        .where((doctor) => _availabilityManager.slots.isNotEmpty)
-        .toList();
+    _loadDoctorsFromFirestore();
   }
+
+  Future<void> _loadDoctorsFromFirestore() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('doctors')
+          .get();
+
+      final doctors = snapshot.docs.map((doc) {
+        final data = doc.data();
+        final firstName = data['firstName'] as String? ?? '';
+        final lastName = data['lastName'] as String? ?? '';
+        final fullName = firstName.isNotEmpty && lastName.isNotEmpty
+            ? 'Dr. $firstName $lastName'
+            : data['fullName'] as String? ?? 'Dr. Unknown';
+        
+        return DoctorInfo(
+          id: doc.id,
+          name: fullName,
+          specialty: data['degree'] as String? ?? 'Physiotherapy Specialist',
+          rating: 4.8, // Default rating, can be calculated from reviews
+          experience: '5 years', // Can be calculated from graduation date
+          image: '👨‍⚕️',
+        );
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allDoctors = doctors;
+          _isLoadingDoctors = false;
+        });
+        _filterDoctors('');
+      }
+    } catch (e) {
+      debugPrint('Error loading doctors: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingDoctors = false;
+        });
+      }
+    }
+  }
+
+  String _searchQuery = '';
 
   @override
   void dispose() {
@@ -158,21 +98,20 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
     setState(() {
       _searchQuery = query;
       if (query.isEmpty) {
-        _filteredDoctors = _allDoctors
-            .where((doctor) => _availabilityManager.slots.isNotEmpty)
-            .toList();
+        _filteredDoctors = List.from(_allDoctors);
       } else {
         _filteredDoctors = _allDoctors
             .where((doctor) =>
-                (doctor.name.toLowerCase().contains(query.toLowerCase()) ||
-                    doctor.specialty.toLowerCase().contains(query.toLowerCase())) &&
-                _availabilityManager.slots.isNotEmpty)
+                doctor.name.toLowerCase().contains(query.toLowerCase()) ||
+                doctor.specialty.toLowerCase().contains(query.toLowerCase()))
             .toList();
       }
     });
   }
 
   void _showSlotSelection(BuildContext context, DoctorInfo doctor) {
+    // Keep a stable reference to the page context for navigations/dialogs
+    final pageContext = context;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(
@@ -181,7 +120,7 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Column(
+      builder: (sheetContext) => Column(
         children: [
           // Header
           Container(
@@ -207,7 +146,7 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(sheetContext),
                   icon: const Icon(Icons.close),
                 ),
               ],
@@ -253,7 +192,7 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _availabilityManager.slots.length,
-                    itemBuilder: (context, index) {
+                    itemBuilder: (itemContext, index) {
                       final slot = _availabilityManager.slots[index];
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -295,8 +234,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
                                 backgroundColor: const Color(0xFF8BC34A),
                               ),
                               onPressed: () {
-                                Navigator.pop(context);
-                                _bookAppointment(context, doctor, slot);
+                                // Show confirmation dialog without closing the sheet
+                                _bookAppointment(pageContext, sheetContext, doctor, slot);
                               },
                               child: Text(
                                 t('Book', 'احجز'),
@@ -325,10 +264,10 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
     return '$hour:$minute $period';
   }
 
-  void _bookAppointment(BuildContext context, DoctorInfo doctor, AvailabilitySlot slot) {
+  void _bookAppointment(BuildContext pageContext, BuildContext sheetContext, DoctorInfo doctor, AvailabilitySlot slot) {
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: pageContext,
+      builder: (dialogContext) => AlertDialog(
         title: Text(t('Confirm Booking', 'تأكيد الحجز')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -353,16 +292,58 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(t('Cancel', 'إلغاء')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF8BC34A),
             ),
-            onPressed: () {
-              Navigator.pop(context);
-              _showBookingSuccess(context, doctor, slot);
+            onPressed: () async {
+              // Save booking data before closing any dialogs
+              final bookingDate = DateTime(slot.date.year, slot.date.month, slot.date.day);
+              final bookingDateTime = bookingDate.add(Duration(
+                hours: slot.timeFrom.hour,
+                minutes: slot.timeFrom.minute,
+              ));
+              final endDateTime = bookingDate.add(Duration(
+                hours: slot.timeTo.hour,
+                minutes: slot.timeTo.minute,
+              ));
+              
+              final booking = PatientBooking(
+                id: 'booking_${DateTime.now().millisecondsSinceEpoch}',
+                doctorName: doctor.name,
+                specialty: doctor.specialty,
+                dateTime: bookingDateTime,
+                endTime: endDateTime,
+                doctorImage: doctor.image,
+              );
+              
+              // Close confirmation dialog first
+              if (mounted) Navigator.of(dialogContext).pop();
+              
+              // Capture navigator before async gap
+              final sheetNavigator = Navigator.of(sheetContext);
+              
+              // Wait a frame
+              await Future.delayed(const Duration(milliseconds: 100));
+              
+              // Close bottom sheet using captured navigator to avoid context across async gap
+              if (mounted) sheetNavigator.pop();
+              
+              // Save booking data
+              if (mounted) {
+                PatientBookingsManager().addBooking(booking);
+                _availabilityManager.bookSlot(slot);
+                
+                // Show success dialog on next frame using stable page context
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    _showBookingSuccess(pageContext, doctor, slot);
+                  }
+                });
+              }
             },
             child: Text(
               t('Confirm', 'تأكيد'),
@@ -375,33 +356,6 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
   }
 
   void _showBookingSuccess(BuildContext context, DoctorInfo doctor, AvailabilitySlot slot) {
-    // Save the booking to the manager
-    final bookingDateTime = DateTime(
-      slot.date.year,
-      slot.date.month,
-      slot.date.day,
-      slot.timeFrom.hour,
-      slot.timeFrom.minute,
-    );
-    final endDateTime = DateTime(
-      slot.date.year,
-      slot.date.month,
-      slot.date.day,
-      slot.timeTo.hour,
-      slot.timeTo.minute,
-    );
-
-    final booking = PatientBooking(
-      id: 'booking_${DateTime.now().millisecondsSinceEpoch}',
-      doctorName: doctor.name,
-      specialty: doctor.specialty,
-      dateTime: bookingDateTime,
-      endTime: endDateTime,
-      doctorImage: doctor.image,
-    );
-
-    PatientBookingsManager().addBooking(booking);
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -518,41 +472,47 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
 
           // Doctors List
           Expanded(
-            child: _filteredDoctors.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 64,
-                          color: isDark ? Colors.white24 : Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          t('No doctors found', 'لم يتم العثور على أطباء'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: isDark ? Colors.white54 : Colors.black54,
-                          ),
-                        ),
-                      ],
+            child: _isLoadingDoctors
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF8BC34A),
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredDoctors.length,
-                    itemBuilder: (context, index) {
-                      final doctor = _filteredDoctors[index];
-                      return _DoctorCard(
-                        doctor: doctor,
-                        isDark: isDark,
-                        onBook: () => _showSlotSelection(context, doctor),
-                        formatDate: _formatDate,
-                        formatTime: _formatTime,
-                      );
-                    },
-                  ),
+                : _filteredDoctors.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: isDark ? Colors.white24 : Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              t('No doctors found', 'لم يتم العثور على أطباء'),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: isDark ? Colors.white54 : Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _filteredDoctors.length,
+                        itemBuilder: (context, index) {
+                          final doctor = _filteredDoctors[index];
+                          return _DoctorCard(
+                            doctor: doctor,
+                            isDark: isDark,
+                            onBook: () => _showSlotSelection(context, doctor),
+                            formatDate: _formatDate,
+                            formatTime: _formatTime,
+                          );
+                        },
+                      ),
           ),
         ],
       ),

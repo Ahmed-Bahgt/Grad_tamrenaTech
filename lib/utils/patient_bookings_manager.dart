@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Singleton to manage patient bookings across the app
 class PatientBookingsManager {
@@ -10,7 +12,7 @@ class PatientBookingsManager {
   }
 
   PatientBookingsManager._internal() {
-    _initializeTestBooking();
+    _loadBookingsFromFirestore();
   }
 
   final List<PatientBooking> _bookings = [];
@@ -37,8 +39,71 @@ class PatientBookingsManager {
     }
   }
 
+  /// Load bookings from Firestore for current patient
+  Future<void> _loadBookingsFromFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(user.uid)
+          .collection('bookings')
+          .get();
+
+      _bookings.clear();
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final dateTime = (data['dateTime'] as Timestamp).toDate();
+        final endTime = (data['endTime'] as Timestamp).toDate();
+
+        _bookings.add(PatientBooking(
+          id: doc.id,
+          doctorName: data['doctorName'] as String,
+          specialty: data['specialty'] as String,
+          dateTime: dateTime,
+          endTime: endTime,
+          doctorImage: data['doctorImage'] as String,
+          status: data['status'] as String? ?? 'upcoming',
+        ));
+      }
+      _bookings.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      _notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading bookings from Firestore: $e');
+    }
+  }
+
+  /// Save booking to Firestore
+  Future<void> _saveBookingToFirestore(PatientBooking booking) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(user.uid)
+          .collection('bookings')
+          .doc(booking.id)
+          .set({
+        'doctorName': booking.doctorName,
+        'specialty': booking.specialty,
+        'dateTime': booking.dateTime,
+        'endTime': booking.endTime,
+        'doctorImage': booking.doctorImage,
+        'status': booking.status,
+      });
+    } catch (e) {
+      debugPrint('Error saving booking to Firestore: $e');
+    }
+  }
+
   void addBooking(PatientBooking booking) {
+    debugPrint('PatientBookingsManager: Adding booking ${booking.doctorName} at ${booking.dateTime}');
     _bookings.add(booking);
+    debugPrint('PatientBookingsManager: Total bookings: ${_bookings.length}');
+    debugPrint('PatientBookingsManager: Upcoming bookings: ${upcomingBookings.length}');
+    _saveBookingToFirestore(booking);
     _notifyListeners();
   }
 
@@ -57,36 +122,6 @@ class PatientBookingsManager {
   void clearBookings() {
     _bookings.clear();
     _notifyListeners();
-  }
-
-  void _initializeTestBooking() {
-    // Add a test booking for today at 2:00 PM
-    final now = DateTime.now();
-    final todayBooking = DateTime(now.year, now.month, now.day, 14, 0);
-
-    if (todayBooking.isAfter(now)) {
-      _bookings.add(PatientBooking(
-        id: 'booking_1',
-        doctorName: 'Dr. Sarah Ali',
-        specialty: 'Sports Medicine',
-        dateTime: todayBooking,
-        endTime: DateTime(now.year, now.month, now.day, 14, 30),
-        doctorImage: '👩‍⚕️',
-      ));
-    }
-
-    // Add a test booking for tomorrow at 10:00 AM
-    final tomorrow = now.add(const Duration(days: 1));
-    _bookings.add(PatientBooking(
-      id: 'booking_2',
-      doctorName: 'Dr. Ahmed Hassan',
-      specialty: 'Physiotherapy Specialist',
-      dateTime: DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 0),
-      endTime: DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 30),
-      doctorImage: '👨‍⚕️',
-    ));
-
-    _bookings.sort((a, b) => a.dateTime.compareTo(b.dateTime));
   }
 }
 

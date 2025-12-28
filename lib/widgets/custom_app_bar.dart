@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/responsive_utils.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -16,6 +17,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         title,
         style: TextStyle(
           fontWeight: FontWeight.bold,
+          fontSize: ResponsiveUtils.fontSize(context, 20),
           color: isDark ? Colors.white : Colors.black87,
         ),
       ),
@@ -24,6 +26,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       leading: shouldShowBack
           ? IconButton(
               icon: Icon(Icons.arrow_back_ios,
+                  size: ResponsiveUtils.iconSize(context, 20),
                   color: Theme.of(context).colorScheme.primary),
               onPressed: onBack ?? () => Navigator.pop(context),
             )

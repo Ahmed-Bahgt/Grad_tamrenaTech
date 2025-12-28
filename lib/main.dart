@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'utils/theme_provider.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/role_selection_screen.dart';
-import 'screens/auth/doctor_registration.dart';
-import 'screens/auth/patient_registration.dart';
+import 'screens/auth/doctor_registration_flow.dart';
+import 'screens/auth/patient_registration_flow.dart';
 import 'screens/auth/doctor_login.dart';
 import 'screens/auth/patient_login.dart';
 import 'screens/auth/verification_screen.dart';
@@ -28,7 +31,9 @@ enum Screen {
   settings,
 }
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const TamrenaApp());
 }
 
@@ -117,6 +122,17 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  Future<void> _handleLogout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      widget.themeProvider.clearUserData();
+      navigateTo(Screen.welcome);
+    } catch (e) {
+      debugPrint('Error during logout: $e');
+      navigateTo(Screen.welcome);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
@@ -140,16 +156,15 @@ class _MainScreenState extends State<MainScreen> {
           onBack: () => navigateTo(Screen.welcome),
         );
       case Screen.doctorRegister:
-        return DoctorRegistrationScreen(
-          onSuccess: () => navigateTo(Screen.successDoctor),
-          onReturnToLogin: () => navigateTo(Screen.doctorLogin),
+        return DoctorRegistrationFlowPage(
           onBack: () => navigateTo(Screen.roleSelection),
+          onDoctorLogin: () => navigateTo(Screen.doctorLogin),
         );
       case Screen.patientRegister:
-        return PatientRegistrationScreen(
-          onSuccess: () => navigateTo(Screen.successPatient),
-                    onReturnToLogin: () => navigateTo(Screen.patientLogin),
+        return PatientRegistrationFlowPage(
           onBack: () => navigateTo(Screen.roleSelection),
+          onSuccess: () => navigateTo(Screen.successPatient),
+          onPatientLogin: () => navigateTo(Screen.patientLogin),
         );
       case Screen.doctorLogin:
         return DoctorLoginScreen(
@@ -186,16 +201,16 @@ class _MainScreenState extends State<MainScreen> {
         );
       case Screen.doctorDashboard:
         return DoctorDashboard(
-          onLogout: () => navigateTo(Screen.welcome),
+          onLogout: _handleLogout,
           themeProvider: widget.themeProvider,
-          onBackToWelcome: () => navigateTo(Screen.welcome),
+          onBackToWelcome: _handleLogout,
         );
       case Screen.patientDashboard:
         return PatientDashboard(
-          onLogout: () => navigateTo(Screen.welcome),
+          onLogout: _handleLogout,
           onSettings: () => navigateTo(Screen.settings),
           themeProvider: widget.themeProvider,
-          onBackToWelcome: () => navigateTo(Screen.welcome),
+          onBackToWelcome: _handleLogout,
         );
       case Screen.settings:
         return SettingsScreen(

@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 /// Dart port of process_frame_squat.py / thresholds.py / utils.py
-/// Mirrors the state machine, thresholds, freeze/reset flow, and feedback.
+/// Updated to match Python ProcessFrameSquat class logic with improved state handling
 class SquatLogic {
   final SquatMode mode;
   final int targetReps;
@@ -19,20 +19,27 @@ class SquatLogic {
   // State machine
   List<String> _stateSeq = [];
   String? _currentState;
+  String? _prevState;
 
   // Freeze/reset logic
   bool _waitingForReset = false;
   int _messageTimer = 0; // frames (~30fps, Python uses 90)
   String? _freezeMessage;
 
-  // Feedback flags (DISPLAY_TEXT in Python, length 4 used)
+  // Feedback flags with frame counting (matching Python's COUNT_FRAMES)
   Map<int, bool> _displayText = {0: false, 1: false, 2: false, 3: false};
+  Map<int, int> _countFrames = {0: 0, 1: 0, 2: 0, 3: 0}; // For feedback persistence
   bool _lowerHips = false;
   bool _incorrectPosture = false;
 
-  // Visibility and meta
-  // Retained for reference; not used after relaxing stream gating
-  static const double _visibilityThresh = 0.5;
+  // Inactivity tracking (both front and side view)
+  DateTime _startInactiveTime = DateTime.now();
+  DateTime _startInactiveTimeFront = DateTime.now();
+  double _inactiveTime = 0.0;
+  double _inactiveTimeFront = 0.0;
+  static const double inactiveThresh = 5.0; // seconds
+
+  // Display message
   String _displayMessage = '';
 
   SquatLogic({
@@ -51,13 +58,19 @@ class SquatLogic {
     _improperCount = 0;
     _stateSeq = [];
     _currentState = null;
+    _prevState = null;
     _waitingForReset = false;
     _messageTimer = 0;
     _freezeMessage = null;
     _displayText = {0: false, 1: false, 2: false, 3: false};
+    _countFrames = {0: 0, 1: 0, 2: 0, 3: 0};
     _lowerHips = false;
     _incorrectPosture = false;
     _displayMessage = '';
+    _inactiveTime = 0.0;
+    _inactiveTimeFront = 0.0;
+    _startInactiveTime = DateTime.now();
+    _startInactiveTimeFront = DateTime.now();
   }
 
   SquatResult processFrame(Pose pose) {
@@ -67,7 +80,21 @@ class SquatLogic {
       return _emptyResult(jointsDetected: false, displayMessage: _displayMessage);
     }
 
-    // Landmarks we need (dict_features)
+    // === 1. HANDLE RESET FREEZE LOGIC (Global Timer) ===
+    if (_waitingForReset) {
+      if (_messageTimer > 0) {
+        _messageTimer -= 1;
+      }
+      // If Timer finishes, reset everything for the next set
+      if (_messageTimer <= 0) {
+        _waitingForReset = false;
+        _squatCount = 0;
+        _improperCount = 0;
+        _setCount = (_setCount + 1).clamp(0, targetSets);
+      }
+    }
+
+    // Get landmarks
     final leftShoulder = lm[PoseLandmarkType.leftShoulder];
     final rightShoulder = lm[PoseLandmarkType.rightShoulder];
     final leftHip = lm[PoseLandmarkType.leftHip];
@@ -97,14 +124,36 @@ class SquatLogic {
       return _emptyResult(jointsDetected: false, displayMessage: _displayMessage);
     }
 
-    // Posture alignment check (offset angle between shoulders w.r.t nose)
+    // Calculate offset angle (posture alignment)
     final offsetAngle = _findAngle(
       _Point(leftShoulder!.x, leftShoulder.y),
       _Point(rightShoulder!.x, rightShoulder.y),
       _Point(nose!.x, nose.y),
     );
 
+    // === BRANCH A: CAMERA NOT ALIGNED (User turning away or inactive) ===
     if (offsetAngle > _thresholds.offsetThresh) {
+      // Inactivity Logic (Front View)
+      final now = DateTime.now();
+      _inactiveTimeFront += now.difference(_startInactiveTimeFront).inMilliseconds / 1000;
+      _startInactiveTimeFront = now;
+
+      if (_inactiveTimeFront >= inactiveThresh) {
+        _squatCount = 0;
+        _improperCount = 0;
+        _inactiveTimeFront = 0.0;
+        _startInactiveTimeFront = DateTime.now();
+      }
+
+      // Reset state tracking for misaligned posture
+      _prevState = null;
+      _currentState = null;
+      _incorrectPosture = false;
+      _stateSeq = [];
+      _displayText = {0: false, 1: false, 2: false, 3: false};
+      _countFrames = {0: 0, 1: 0, 2: 0, 3: 0};
+      _startInactiveTime = DateTime.now();
+
       _displayMessage = 'POSTURE NOT ALIGNED PROPERLY!!! (TURN LEFT or RIGHT)';
       return _buildResult(
         hipAngle: 0,
@@ -117,19 +166,9 @@ class SquatLogic {
       );
     }
 
-    // Freeze/reset timer handling (skip counting while waiting)
-    if (_waitingForReset) {
-      if (_messageTimer > 0) {
-        _messageTimer -= 1;
-      }
-      if (_messageTimer <= 0) {
-        _waitingForReset = false;
-        _messageTimer = 0;
-        _squatCount = 0;
-        _improperCount = 0;
-        _setCount = (_setCount + 1).clamp(0, targetSets);
-      }
-    }
+    // === BRANCH B: CAMERA ALIGNED (Active Training) ===
+    _inactiveTimeFront = 0.0;
+    _startInactiveTimeFront = DateTime.now();
 
     // Choose side with bigger shoulder-to-foot span
     final leftSpan = (leftFoot!.y - leftShoulder.y).abs();
@@ -141,16 +180,7 @@ class SquatLogic {
     final knee = useLeft ? leftKnee! : rightKnee!;
     final ankle = useLeft ? leftAnkle! : rightAnkle!;
 
-    // Basic presence check (avoid over-filtering by likelihood in stream mode)
-    // We already gated camera visibility during calibration, so proceed here.
-    // If any key joint is missing, return early.
-    // Landmarks are non-null here with ML Kit; this guard silences analyzer
-    if (knee == null) {
-      _displayMessage = 'Full body not visible';
-      return _emptyResult(jointsDetected: false, displayMessage: _displayMessage);
-    }
-
-    // Angles (vertical reference, matching Python)
+    // Calculate angles (vertical reference)
     final hipAngle = _findAngle(
       _Point(shoulder.x, shoulder.y),
       _Point(hip.x, 0),
@@ -167,38 +197,61 @@ class SquatLogic {
       _Point(ankle.x, ankle.y),
     );
 
-    // Feedback flags reset each frame
-    _displayText = {0: false, 1: false, 2: false, 3: false};
-    _lowerHips = false;
+    // === 2. UPDATE STATE ===
+    _currentState = _getState(kneeAngle.toInt());
+    _updateStateSequence(_currentState);
 
-    // State machine & counting (only if not waiting)
+    // === 3. CHECK FEEDBACK & POSTURE (Runs EVERY frame) ===
+    if (hipAngle > _thresholds.hipThreshMax) {
+      _displayText[0] = true; // BEND FORWARD
+    } else if (hipAngle < _thresholds.hipThreshMin &&
+        _stateSeq.where((s) => s == 's2').length == 1) {
+      _displayText[1] = true; // BEND BACKWARDS
+    }
+
+    if (kneeAngle > _thresholds.kneeThreshMin &&
+        kneeAngle < _thresholds.kneeThreshMid &&
+        _stateSeq.where((s) => s == 's2').length == 1) {
+      _lowerHips = true;
+    } else if (kneeAngle > _thresholds.kneeThreshMax) {
+      _displayText[3] = true; // SQUAT TOO DEEP
+      _incorrectPosture = true;
+    }
+
+    if (ankleAngle > _thresholds.ankleThresh) {
+      _displayText[2] = true; // KNEE FALLING OVER TOE
+      _incorrectPosture = true;
+    }
+
+    // === 4. COUNTING LOGIC (Only runs if active) ===
     bool repCounted = false;
     if (!_waitingForReset) {
-      _currentState = _getState(kneeAngle.toInt());
-      _updateStateSequence(_currentState);
-
       if (_currentState == 's1') {
-        // Check for complete sequence: should have s2 and s3
-        if (_stateSeq.contains('s2') &&
-            _stateSeq.contains('s3') &&
-            !_incorrectPosture) {
+        // Valid Rep: complete sequence without posture issues
+        if (_stateSeq.length == 3 && !_incorrectPosture) {
           _squatCount += 1;
           repCounted = true;
-          debugPrint('[SquatLogic] ✅ CORRECT REP #$_squatCount, state_seq=$_stateSeq');
-        } else if (_stateSeq.contains('s2') && !_stateSeq.contains('s3')) {
-          // Incomplete squat - only went to transition, not full depth
+          debugPrint('[SquatLogic] ✅ CORRECT REP #$_squatCount');
+        }
+        // Invalid Rep cases
+        else if (_stateSeq.contains('s2') && _stateSeq.length == 1) {
           _improperCount += 1;
           repCounted = true;
-          debugPrint('[SquatLogic] ❌ INCORRECT (incomplete) #$_improperCount, state_seq=$_stateSeq');
+          debugPrint('[SquatLogic] ❌ INCORRECT (incomplete) #$_improperCount');
         } else if (_incorrectPosture) {
           _improperCount += 1;
           repCounted = true;
           debugPrint('[SquatLogic] ❌ INCORRECT (posture) #$_improperCount');
         }
 
+        // Reset all flags for the NEXT REP
         _stateSeq = [];
         _incorrectPosture = false;
+        _lowerHips = false;
+        _displayText = {0: false, 1: false, 2: false, 3: false};
+        _countFrames = {0: 0, 1: 0, 2: 0, 3: 0};
 
+        // Check limit / sets
         final totalReps = _squatCount + _improperCount;
         if (totalReps >= targetReps) {
           _waitingForReset = true;
@@ -209,42 +262,48 @@ class SquatLogic {
           } else {
             _freezeMessage = 'Well Done! Set $nextSet Finished';
           }
-          debugPrint('[SquatLogic] 🔄 FREEZE: totalReps=$totalReps, nextSet=$nextSet');
+          debugPrint('[SquatLogic] 🔄 FREEZE: totalReps=$totalReps');
         }
       }
     }
 
-    // Feedback (DISPLAY_TEXT and LOWER_HIPS) - ONLY when NOT waiting for reset
-    if (!_waitingForReset) {
-      if (hipAngle > _thresholds.hipThreshMax) {
-        _displayText[0] = true; // BEND FORWARD
-        debugPrint('[SquatLogic] FEEDBACK: BEND FORWARD (hip=$hipAngle)');
-      } else if (hipAngle < _thresholds.hipThreshMin &&
-          _stateSeq.where((s) => s == 's2').length == 1) {
-        _displayText[1] = true; // BEND BACKWARDS
-        debugPrint('[SquatLogic] FEEDBACK: BEND BACKWARDS (hip=$hipAngle)');
-      }
+    // === 5. INACTIVITY CHECK (Side view) ===
+    bool displayInactivity = false;
+    if (_currentState == _prevState) {
+      final now = DateTime.now();
+      _inactiveTime += now.difference(_startInactiveTime).inMilliseconds / 1000;
+      _startInactiveTime = now;
 
-      if (kneeAngle > _thresholds.kneeThreshMin &&
-          kneeAngle < _thresholds.kneeThreshMid &&
-          _stateSeq.where((s) => s == 's2').length == 1) {
-        _lowerHips = true;
-        debugPrint('[SquatLogic] FEEDBACK: LOWER YOUR HIPS (knee=$kneeAngle in s2)');
-      } else if (kneeAngle > _thresholds.kneeThreshMax) {
-        _displayText[3] = true; // SQUAT TOO DEEP
-        _incorrectPosture = true;
-        debugPrint('[SquatLogic] FEEDBACK: SQUAT TOO DEEP (knee=$kneeAngle)');
+      if (_inactiveTime >= inactiveThresh) {
+        _squatCount = 0;
+        _improperCount = 0;
+        displayInactivity = true;
       }
+    } else {
+      _startInactiveTime = DateTime.now();
+      _inactiveTime = 0.0;
+    }
 
-      if (ankleAngle > _thresholds.ankleThresh) {
-        _displayText[2] = true; // KNEE FALLING OVER TOE
-        _incorrectPosture = true;
-        debugPrint('[SquatLogic] FEEDBACK: KNEE FALLING OVER TOE (ankle=$ankleAngle)');
-      }
+    if (displayInactivity) {
+      _startInactiveTime = DateTime.now();
+      _inactiveTime = 0.0;
+    }
 
-      if (_stateSeq.contains('s3')) {
-        _lowerHips = false;
+    // Clear LOWER_HIPS if in s3
+    if (_stateSeq.contains('s3')) {
+      _lowerHips = false;
+    }
+
+    // Update frame count for feedback persistence
+    for (int i = 0; i < 4; i++) {
+      if (_displayText[i] == true) {
+        _countFrames[i] = (_countFrames[i]! + 1).clamp(0, 999);
       }
+    }
+
+    // Update previous state
+    if (_currentState != null) {
+      _prevState = _currentState;
     }
 
     final sessionComplete = _setCount >= targetSets && !_waitingForReset;
@@ -351,10 +410,22 @@ class SquatLogic {
   }
 
   String _generateFeedback() {
-    if (_displayText[0] == true) return 'BEND FORWARD';
-    if (_displayText[1] == true) return 'BEND BACKWARDS';
-    if (_displayText[2] == true) return 'KNEE FALLING OVER TOE';
-    if (_displayText[3] == true) return 'SQUAT TOO DEEP';
+    // Check which feedback is active (based on _countFrames for persistence)
+    for (int i = 0; i < 4; i++) {
+      if (_countFrames[i]! > 0) {
+        switch (i) {
+          case 0:
+            return 'BEND FORWARD';
+          case 1:
+            return 'BEND BACKWARDS';
+          case 2:
+            return 'KNEE FALLING OVER TOE';
+          case 3:
+            return 'SQUAT TOO DEEP';
+        }
+      }
+    }
+    
     if (_lowerHips) return 'LOWER YOUR HIPS';
     if (_waitingForReset && _freezeMessage != null) return _freezeMessage!;
     return 'Good form';
@@ -393,6 +464,26 @@ class SquatResult {
     required this.waitingForReset,
     required this.messageTimer,
   });
+
+  /// Converts to a map suitable for Firestore workout logging.
+  Map<String, dynamic> toWorkoutMap({int? targetSets}) {
+    final totalReps = correctReps + incorrectReps;
+    final accuracy = totalReps > 0 ? (correctReps / totalReps * 100) : 0.0;
+    return {
+      'correctReps': correctReps,
+      'incorrectReps': incorrectReps,
+      'totalReps': totalReps,
+      'accuracy': accuracy,
+      'currentSet': currentSet,
+      'feedback': feedback,
+      'sessionComplete': sessionComplete,
+      'kneeAngle': kneeAngle,
+      'hipAngle': hipAngle,
+      'ankleAngle': ankleAngle,
+      'targetSets': targetSets,
+      'timestamp': DateTime.now().toUtc(),
+    };
+  }
 }
 
 class SquatThresholds {

@@ -1,142 +1,152 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Singleton class to manage patients across screens
-class PatientManager {
+class PatientManager extends ChangeNotifier {
   static final PatientManager _instance = PatientManager._internal();
 
   factory PatientManager() {
     return _instance;
   }
 
-  PatientManager._internal();
+  PatientManager._internal() {
+    _loadPatientsFromFirestore();
+  }
 
-  final List<PatientData> _myPatients = [
-    PatientData(
-      id: '1',
-      name: 'Ahmed Hassan',
-      diagnosis: 'Knee Replacement Recovery',
-      progress: 0.75,
-      phone: '+20 123 456 7890',
-      email: 'ahmed.hassan@email.com',
-      assignedPlan: 'Squat',
-      notes: 'Patient showing excellent progress. Continue current regimen.',
-      lastSession: '2025-12-10',
-      nextAppointment: 'Today 4:00 PM',
-    ),
-    PatientData(
-      id: '2',
-      name: 'Sara Mohamed',
-      diagnosis: 'Shoulder Injury',
-      progress: 0.50,
-      phone: '+20 111 222 3333',
-      email: 'sara.mohamed@email.com',
-      assignedPlan: '',
-      notes: 'Needs to focus on range of motion exercises.',
-      lastSession: '2025-12-12',
-      nextAppointment: 'Tomorrow 10:30 AM',
-    ),
-    PatientData(
-      id: '3',
-      name: 'Omar Ali',
-      diagnosis: 'Post-Stroke Rehabilitation',
-      progress: 0.30,
-      phone: '+20 100 555 4444',
-      email: 'omar.ali@email.com',
-      assignedPlan: 'Squat',
-      notes: 'Initial assessment completed. Starting basic mobility exercises.',
-      lastSession: '2025-12-14',
-      nextAppointment: '—',
-    ),
-  ];
+  // Patients assigned to current doctor
+  final List<PatientData> _myPatients = [];
+  // All patients with accounts (available to add to care)
+  final List<PatientData> _allPatients = [];
+  bool _isLoading = false;
 
-  final List<PatientData> _allPatients = [
-    PatientData(
-      id: '4',
-      name: 'Fatima Ibrahim',
-      diagnosis: 'Back Pain',
-      progress: 0.0,
-      phone: '+20 122 333 5555',
-      email: 'fatima.ibrahim@email.com',
-      assignedPlan: '',
-      notes: '',
-      lastSession: '',
-      nextAppointment: '',
-    ),
-    PatientData(
-      id: '5',
-      name: 'Mahmoud Sayed',
-      diagnosis: 'Hip Replacement',
-      progress: 0.0,
-      phone: '+20 112 444 6666',
-      email: 'mahmoud.sayed@email.com',
-      assignedPlan: '',
-      notes: '',
-      lastSession: '',
-      nextAppointment: '',
-    ),
-    PatientData(
-      id: '6',
-      name: 'Nour Hassan',
-      diagnosis: 'Sports Injury',
-      progress: 0.0,
-      phone: '+20 101 777 8888',
-      email: 'nour.hassan@email.com',
-      assignedPlan: '',
-      notes: '',
-      lastSession: '',
-      nextAppointment: '',
-    ),
-    PatientData(
-      id: '7',
-      name: 'Khaled Ahmed',
-      diagnosis: 'Arthritis',
-      progress: 0.0,
-      phone: '+20 120 888 9999',
-      email: 'khaled.ahmed@email.com',
-      assignedPlan: '',
-      notes: '',
-      lastSession: '',
-      nextAppointment: '',
-    ),
-  ];
+  bool get isLoading => _isLoading;
 
-  final List<VoidCallback> _listeners = [];
+  /// Load both assigned and all available patients from Firestore
+  Future<void> _loadPatientsFromFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _myPatients.clear();
+      _allPatients.clear();
+      notifyListeners();
+      return;
+    }
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Load all patients first
+      final allSnapshot = await FirebaseFirestore.instance
+          .collection('patients')
+          .get();
+
+      _allPatients.clear();
+      _myPatients.clear();
+
+      final myPatientIds = <String>{};
+
+      // Process all patients and separate into assigned/unassigned
+      for (final doc in allSnapshot.docs) {
+        final data = doc.data();
+        final firstName = data['firstName'] as String? ?? '';
+        final lastName = data['lastName'] as String? ?? '';
+        final patientName = firstName.isNotEmpty && lastName.isNotEmpty
+            ? '$firstName $lastName'
+            : data['fullName'] as String? ?? 'Patient';
+
+        final patient = PatientData(
+          id: doc.id,
+          name: patientName,
+          diagnosis: data['diagnosis'] as String? ?? 'Rehabilitation',
+          progress: (data['progress'] as num?)?.toDouble() ?? 0.0,
+          phone: data['phone'] as String? ?? '',
+          email: data['email'] as String? ?? '',
+          assignedPlan: data['assignedPlan'] as String? ?? '',
+          notes: data['notes'] as String? ?? '',
+          lastSession: data['lastSession'] as String? ?? '',
+          nextAppointment: data['nextAppointment'] as String? ?? '',
+        );
+
+        // Add to all patients list
+        _allPatients.add(patient);
+
+        // Check if assigned to current doctor
+        final assignedDoctorId = data['assignedDoctorId'] as String? ?? '';
+        if (assignedDoctorId == user.uid) {
+          _myPatients.add(patient);
+          myPatientIds.add(patient.id);
+        }
+      }
+
+      // Remove my patients from all patients list (so they show only in "All Patients" as unassigned)
+      // Actually, keep them in all patients list but sorted differently by UI if needed
+    } catch (e) {
+      debugPrint('Error loading patients: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Reload patients from Firestore
+  Future<void> refreshPatients() async {
+    await _loadPatientsFromFirestore();
+  }
 
   List<PatientData> get myPatients => List.unmodifiable(_myPatients);
   List<PatientData> get allPatients => List.unmodifiable(_allPatients);
 
-  void addListener(VoidCallback listener) {
-    _listeners.add(listener);
-  }
+  /// Add patient to current doctor's care (save to Firestore)
+  Future<void> addToMyCare(PatientData patient) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-  void removeListener(VoidCallback listener) {
-    _listeners.remove(listener);
-  }
+    try {
+      // Update patient document with current doctor's ID
+      await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(patient.id)
+          .update({'assignedDoctorId': user.uid});
 
-  void _notifyListeners() {
-    for (var listener in _listeners) {
-      listener();
+      // Update local lists
+      if (!_myPatients.any((p) => p.id == patient.id)) {
+        _myPatients.add(patient);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error adding patient to care: $e');
     }
   }
 
-  void addToMyCare(PatientData patient) {
-    _myPatients.add(patient);
-    _allPatients.removeWhere((p) => p.id == patient.id);
-    _notifyListeners();
-  }
+  /// Remove patient from current doctor's care (save to Firestore)
+  Future<void> removeFromMyCare(PatientData patient) async {
+    try {
+      // Clear assignedDoctorId in Firestore
+      await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(patient.id)
+          .update({'assignedDoctorId': FieldValue.delete()});
 
-  void removeFromMyCare(PatientData patient) {
-    _myPatients.removeWhere((p) => p.id == patient.id);
-    _allPatients.add(patient);
-    _notifyListeners();
+      // Update local lists
+      _myPatients.removeWhere((p) => p.id == patient.id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error removing patient from care: $e');
+    }
   }
 
   void updatePatient(PatientData updatedPatient) {
-    final index = _myPatients.indexWhere((p) => p.id == updatedPatient.id);
-    if (index != -1) {
-      _myPatients[index] = updatedPatient;
-      _notifyListeners();
+    final myIndex = _myPatients.indexWhere((p) => p.id == updatedPatient.id);
+    if (myIndex != -1) {
+      _myPatients[myIndex] = updatedPatient;
     }
+    
+    final allIndex = _allPatients.indexWhere((p) => p.id == updatedPatient.id);
+    if (allIndex != -1) {
+      _allPatients[allIndex] = updatedPatient;
+    }
+    notifyListeners();
   }
 }
 

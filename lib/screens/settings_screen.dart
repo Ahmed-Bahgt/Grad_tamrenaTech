@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/theme_provider.dart';
+import '../utils/responsive_utils.dart';
 
 // --- SETTINGS SCREEN ---
 class SettingsScreen extends StatefulWidget {
@@ -24,7 +25,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _isDarkMode = widget.themeProvider?.isDarkMode ?? true;
     _language = widget.themeProvider?.language ?? 'en';
     _notificationsEnabled = true;
-    _displayName = widget.themeProvider?.displayName ?? 'Doctor';
+    _displayName = widget.themeProvider?.displayName ?? '';
+    
+    // Load user profile if not already loaded
+    if (_displayName.isEmpty) {
+      widget.themeProvider?.loadUserProfile().then((_) {
+        if (mounted) {
+          setState(() {
+            _displayName = widget.themeProvider?.displayName ?? 'User';
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -46,135 +58,145 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       backgroundColor: isDarkMode ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle(t('Appearance', 'المظهر')),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.dark_mode,
-              title: t('Dark Mode', 'الوضع الليلي'),
-              subtitle: _isDarkMode ? t('Enabled', 'مفعّل') : t('Disabled', 'معطّل'),
-              trailing: Switch(
-                value: _isDarkMode,
-                onChanged: (value) {
-                  setState(() => _isDarkMode = value);
-                  widget.themeProvider?.toggleTheme();
-                },
-                activeThumbColor: const Color(0xFF00BCD4),
-              ),
-              isDarkMode: isDarkMode,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: ResponsiveUtils.horizontalPadding(context).copyWith(
+            top: ResponsiveUtils.padding(context, 16),
+            bottom: ResponsiveUtils.padding(context, 16),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveUtils.maxContentWidth(context),
             ),
-            const SizedBox(height: 12),
-            _buildSectionTitle(t('Language', 'اللغة')),
-            const SizedBox(height: 12),
-            _buildLanguageOptions(isDarkMode),
-            const SizedBox(height: 24),
-            _buildSectionTitle(t('Notifications', 'الإشعارات')),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.notifications,
-              title: t('Push Notifications', 'إشعارات فورية'),
-              subtitle: t('Receive session reminders and updates', 'احصل على تذكيرات الجلسات والتحديثات'),
-              trailing: Switch(
-                value: _notificationsEnabled,
-                onChanged: (value) {
-                  setState(() => _notificationsEnabled = value);
-                },
-                activeThumbColor: const Color(0xFF00BCD4),
-              ),
-              isDarkMode: isDarkMode,
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle(t('Account & Privacy', 'الحساب والخصوصية')),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.badge,
-              title: t('Display Name', 'الاسم المعروض'),
-              subtitle: _displayName,
-              trailing: const Icon(Icons.edit, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () => _showEditNameDialog(context, isDarkMode),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.person,
-              title: t('Profile', 'الملف الشخصي'),
-              subtitle: t('View and edit your profile', 'عرض وتعديل ملفك الشخصي'),
-              trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () => _showProfileDialog(context, isDarkMode),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.lock,
-              title: t('Privacy & Security', 'الخصوصية والأمان'),
-              subtitle: t('Change password and manage security', 'غيّر كلمة المرور وإدارة الأمان'),
-              trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () => _showChangePasswordDialog(context, isDarkMode),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.data_usage,
-              title: t('Data & Storage', 'البيانات والتخزين'),
-              subtitle: t('Manage cache and storage', 'إدارة الذاكرة المؤقتة والتخزين'),
-              trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Storage management coming soon'),
-                    duration: Duration(seconds: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle(t('Appearance', 'المظهر')),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.dark_mode,
+                  title: t('Dark Mode', 'الوضع الليلي'),
+                  subtitle: _isDarkMode ? t('Enabled', 'مفعّل') : t('Disabled', 'معطّل'),
+                  trailing: Switch(
+                    value: _isDarkMode,
+                    onChanged: (value) {
+                      setState(() => _isDarkMode = value);
+                      widget.themeProvider?.toggleTheme();
+                    },
+                    activeThumbColor: const Color(0xFF00BCD4),
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle(t('About', 'حول التطبيق')),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.info,
-              title: t('App Version', 'إصدار التطبيق'),
-              subtitle: '1.0.0 (Build 001)',
-              isDarkMode: isDarkMode,
-            ),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.description,
-              title: t('Terms & Conditions', 'الشروط والأحكام'),
-              subtitle: t('Read our terms', 'اقرأ شروطنا'),
-              trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Terms of Service'),
-                    duration: Duration(seconds: 2),
+                  isDarkMode: isDarkMode,
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSectionTitle(t('Language', 'اللغة')),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildLanguageOptions(isDarkMode),
+                SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+                _buildSectionTitle(t('Notifications', 'الإشعارات')),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.notifications,
+                  title: t('Push Notifications', 'إشعارات فورية'),
+                  subtitle: t('Receive session reminders and updates', 'احصل على تذكيرات الجلسات والتحديثات'),
+                  trailing: Switch(
+                    value: _notificationsEnabled,
+                    onChanged: (value) {
+                      setState(() => _notificationsEnabled = value);
+                    },
+                    activeThumbColor: const Color(0xFF00BCD4),
                   ),
-                );
-              },
+                  isDarkMode: isDarkMode,
+                ),
+                SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+                _buildSectionTitle(t('Account & Privacy', 'الحساب والخصوصية')),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.badge,
+                  title: t('Display Name', 'الاسم المعروض'),
+                  subtitle: _displayName,
+                  trailing: const Icon(Icons.edit, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () => _showEditNameDialog(context, isDarkMode),
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.person,
+                  title: t('Profile', 'الملف الشخصي'),
+                  subtitle: t('View and edit your profile', 'عرض وتعديل ملفك الشخصي'),
+                  trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () => _showProfileDialog(context, isDarkMode),
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.lock,
+                  title: t('Privacy & Security', 'الخصوصية والأمان'),
+                  subtitle: t('Change password and manage security', 'غيّر كلمة المرور وإدارة الأمان'),
+                  trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () => _showChangePasswordDialog(context, isDarkMode),
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.data_usage,
+                  title: t('Data & Storage', 'البيانات والتخزين'),
+                  subtitle: t('Manage cache and storage', 'إدارة الذاكرة المؤقتة والتخزين'),
+                  trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Storage management coming soon'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+                _buildSectionTitle(t('About', 'حول التطبيق')),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.info,
+                  title: t('App Version', 'إصدار التطبيق'),
+                  subtitle: '1.0.0 (Build 001)',
+                  isDarkMode: isDarkMode,
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.description,
+                  title: t('Terms & Conditions', 'الشروط والأحكام'),
+                  subtitle: t('Read our terms', 'اقرأ شروطنا'),
+                  trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Terms of Service'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                _buildSettingCard(
+                  icon: Icons.privacy_tip,
+                  title: t('Privacy Policy', 'سياسة الخصوصية'),
+                  subtitle: t('Read our privacy policy', 'اقرأ سياسة الخصوصية لدينا'),
+                  trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
+                  isDarkMode: isDarkMode,
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Privacy Policy'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+              ],
             ),
-            const SizedBox(height: 12),
-            _buildSettingCard(
-              icon: Icons.privacy_tip,
-              title: t('Privacy Policy', 'سياسة الخصوصية'),
-              subtitle: t('Read our privacy policy', 'اقرأ سياسة الخصوصية لدينا'),
-              trailing: const Icon(Icons.arrow_forward, color: Color(0xFF00BCD4)),
-              isDarkMode: isDarkMode,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Privacy Policy'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-          ],
+          ),
         ),
       ),
     );
@@ -184,7 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Text(
       title,
       style: TextStyle(
-        fontSize: 16,
+        fontSize: ResponsiveUtils.fontSize(context, 16),
         fontWeight: FontWeight.bold,
         color: color,
         letterSpacing: 0.5,
@@ -201,14 +223,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     Color? backgroundColor,
   }) {
+    final horizontalPadding = ResponsiveUtils.padding(context, 16);
+    final verticalPadding = ResponsiveUtils.padding(context, 12);
+    final borderRadius = ResponsiveUtils.spacing(context, 12);
+    final iconSize = ResponsiveUtils.iconSize(context, 24);
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
         decoration: BoxDecoration(
           color: backgroundColor ??
               (isDarkMode ? const Color(0xFF2C2C2C) : Colors.white),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(
             color: isDarkMode
                 ? const Color(0xFF00BCD4).withOpacity(0.2)
@@ -219,14 +246,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 8)),
               decoration: BoxDecoration(
                 color: const Color(0xFF00BCD4).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(ResponsiveUtils.spacing(context, 8)),
               ),
-              child: Icon(icon, color: const Color(0xFF00BCD4), size: 24),
+              child: Icon(icon, color: const Color(0xFF00BCD4), size: iconSize),
             ),
-            const SizedBox(width: 16),
+            SizedBox(width: ResponsiveUtils.spacing(context, 16)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,18 +261,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: ResponsiveUtils.fontSize(context, 15),
                       fontWeight: FontWeight.w600,
                       color: isDarkMode ? Colors.white : Colors.black87,
                     ),
                   ),
                   if (subtitle != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
                       child: Text(
                         subtitle,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: ResponsiveUtils.fontSize(context, 12),
                           color: isDarkMode ? Colors.grey : Colors.grey[600],
                         ),
                       ),
@@ -264,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       children: [
         _buildLanguageButton('English', 'en', isDarkMode),
-        const SizedBox(height: 12),
+        SizedBox(height: ResponsiveUtils.spacing(context, 12)),
         _buildLanguageButton('العربية', 'ar', isDarkMode),
       ],
     );
@@ -272,18 +299,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildLanguageButton(String label, String code, bool isDarkMode) {
     final isSelected = _language == code;
+    final horizontalPadding = ResponsiveUtils.padding(context, 16);
+    final verticalPadding = ResponsiveUtils.padding(context, 14);
+    final borderRadius = ResponsiveUtils.spacing(context, 12);
+    
     return GestureDetector(
       onTap: () {
         setState(() => _language = code);
         widget.themeProvider?.setLanguage(code);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF00BCD4).withOpacity(0.15)
               : (isDarkMode ? const Color(0xFF2C2C2C) : Colors.white),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF00BCD4)
@@ -299,7 +330,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(
               label,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: ResponsiveUtils.fontSize(context, 15),
                 fontWeight: FontWeight.w600,
                 color: isDarkMode ? Colors.white : Colors.black87,
               ),

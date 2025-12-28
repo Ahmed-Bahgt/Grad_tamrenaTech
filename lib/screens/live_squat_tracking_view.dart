@@ -6,6 +6,8 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../utils/squat_logic.dart';
 import '../widgets/pose_painter.dart';
+import '../services/database_service.dart';
+// Removed unused FirestoreRepository import
 
 /// Live squat session page: camera stream -> ML Kit pose -> SquatLogic -> overlay
 class LiveSquatSessionPage extends StatefulWidget {
@@ -24,6 +26,7 @@ class _LiveSquatSessionPageState extends State<LiveSquatSessionPage> {
   late final SquatLogic _squatLogic;
   SquatResult? _currentResult;
   List<Pose> _poses = [];
+  final DatabaseService _dbService = DatabaseService();
 
   @override
   void initState() {
@@ -269,7 +272,11 @@ class _LiveSquatSessionPageState extends State<LiveSquatSessionPage> {
     debugPrint('Sets: ${_currentResult!.currentSet}/${_squatLogic.targetSets}');
     debugPrint('Timestamp: ${DateTime.now().toIso8601String()}');
 
-    // TODO: integrate with Firestore if needed
+    // Persist session under current user if signed in
+    await _dbService.logWorkout(
+      result: _currentResult!,
+      targetSets: _squatLogic.targetSets,
+    );
   }
 
   void _showSummaryDialog() {

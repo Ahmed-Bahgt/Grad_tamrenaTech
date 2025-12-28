@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/theme_provider.dart';
+import '../utils/responsive_utils.dart';
 
 class GradientButton extends StatelessWidget {
   final String text;
@@ -21,10 +22,16 @@ class GradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = ResponsiveUtils.spacing(context, 12);
+    final verticalPadding = ResponsiveUtils.buttonHeight(context) * 0.32;
+    final horizontalPadding = ResponsiveUtils.padding(context, 24);
+    final fontSize = ResponsiveUtils.fontSize(context, 18);
+    
     return Container(
       width: double.infinity,
+      height: ResponsiveUtils.buttonHeight(context),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(borderRadius),
         gradient: LinearGradient(
           colors: [startColor, endColor],
           begin: Alignment.topLeft,
@@ -43,12 +50,12 @@ class GradientButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 24.0),
+          padding: EdgeInsets.symmetric(vertical: verticalPadding, horizontal: horizontalPadding),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(borderRadius),
           ),
-          textStyle: const TextStyle(
-            fontSize: 18,
+          textStyle: TextStyle(
+            fontSize: fontSize,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -57,10 +64,22 @@ class GradientButton extends StatelessWidget {
           children: [
             if (icon != null)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: IconTheme(data: IconThemeData(color: textColor), child: icon!),
+                padding: EdgeInsets.only(right: ResponsiveUtils.spacing(context, 8)),
+                child: IconTheme(
+                  data: IconThemeData(
+                    color: textColor,
+                    size: ResponsiveUtils.iconSize(context, 20),
+                  ), 
+                  child: icon!,
+                ),
               ),
-            Text(text, style: TextStyle(color: textColor)),
+            Flexible(
+              child: Text(
+                text, 
+                style: TextStyle(color: textColor, fontSize: fontSize),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),

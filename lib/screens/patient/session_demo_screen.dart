@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../../utils/theme_provider.dart';
 
 /// Demo Screen - Shows example videos (matching Demo.py)
@@ -14,6 +15,8 @@ class SessionDemoScreen extends StatefulWidget {
 class _SessionDemoScreenState extends State<SessionDemoScreen> {
   String _selectedTraining = 'Squat';
   String _selectedForm = 'Correct';
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
 
   final Map<String, String> _trainingTypes = {
     'Squat': 'squat',
@@ -26,12 +29,52 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
     'Incorrect': 'incorrect',
   };
 
+  String _buildVideoPath() {
+    final shortName = _trainingTypes[_selectedTraining] ?? 'squat';
+    final formName = _formOptions[_selectedForm] ?? 'correct';
+    return 'assets/${shortName}_$formName.mp4';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeVideo() async {
+    setState(() => _isVideoInitialized = false);
+
+    final videoPath = _buildVideoPath();
+
+    // Dispose old controller if exists so we don't leak resources when switching videos
+    _videoController?.dispose();
+
+    try {
+      _videoController = VideoPlayerController.asset(videoPath);
+      await _videoController!.initialize();
+      setState(() {
+        _isVideoInitialized = true;
+      });
+      _videoController!.play();
+      // Loop the video
+      _videoController!.setLooping(true);
+    } catch (e) {
+      debugPrint('Error loading video: $e');
+      setState(() {
+        _isVideoInitialized = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final shortName = _trainingTypes[_selectedTraining] ?? 'squat';
-    final formName = _formOptions[_selectedForm] ?? 'correct';
-    final videoPath = 'assets/examples/${shortName}_$formName.mp4';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -51,7 +94,10 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
                   children: [
                     Text(t('Training type', 'نوع التمرين'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black54)),
                     const SizedBox(height: 8),
-                    _buildDropdown(value: _selectedTraining, items: _trainingTypes.keys.toList(), onChanged: (value) => setState(() => _selectedTraining = value ?? 'Squat'), isDark: isDark),
+                    _buildDropdown(value: _selectedTraining, items: _trainingTypes.keys.toList(), onChanged: (value) {
+                      setState(() => _selectedTraining = value ?? 'Squat');
+                      _initializeVideo();
+                    }, isDark: isDark),
                   ],
                 ),
               ),
@@ -62,7 +108,10 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
                   children: [
                     Text(t('Form', 'الوضعية'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black54)),
                     const SizedBox(height: 8),
-                    _buildDropdown(value: _selectedForm, items: _formOptions.keys.toList(), onChanged: (value) => setState(() => _selectedForm = value ?? 'Correct'), isDark: isDark),
+                    _buildDropdown(value: _selectedForm, items: _formOptions.keys.toList(), onChanged: (value) {
+                      setState(() => _selectedForm = value ?? 'Correct');
+                      _initializeVideo();
+                    }, isDark: isDark),
                   ],
                 ),
               ),
@@ -75,22 +124,55 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
             width: double.infinity,
             height: 400,
             decoration: BoxDecoration(color: isDark ? const Color(0xFF161B22) : Colors.grey[200], borderRadius: BorderRadius.circular(12), border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!)),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.play_circle_outline, size: 64, color: isDark ? Colors.white30 : Colors.black26),
-                  const SizedBox(height: 16),
-                  Text(t('Video: $videoPath', 'فيديو: $videoPath'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 12), textAlign: TextAlign.center),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: const Color(0xFF64B5F6).withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF64B5F6).withOpacity(0.3))),
-                    child: Text(t('Add video files to assets/examples/\n(e.g., squat_correct.mp4)', 'أضف ملفات الفيديو إلى assets/examples/\n(مثل squat_correct.mp4)'), style: const TextStyle(fontSize: 11, color: Color(0xFF64B5F6)), textAlign: TextAlign.center),
+            child: _isVideoInitialized && _videoController != null
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: _videoController!.value.aspectRatio,
+                        child: VideoPlayer(_videoController!),
+                      ),
+                      FloatingActionButton(
+                        onPressed: () {
+                          setState(() {
+                            if (_videoController!.value.isPlaying) {
+                              _videoController!.pause();
+                            } else {
+                              _videoController!.play();
+                            }
+                          });
+                        },
+                        backgroundColor: Colors.black54,
+                        child: Icon(
+                          _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.play_circle_outline, size: 64, color: isDark ? Colors.white30 : Colors.black26),
+                        const SizedBox(height: 16),
+                        Text(t('Loading video...', 'جاري تحميل الفيديو...'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 12), textAlign: TextAlign.center),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+                          onPressed: _initializeVideo,
+                          icon: const Icon(Icons.play_circle_fill, size: 18),
+                          label: Text(t('Preview video', 'معاينة الفيديو')), 
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(color: const Color(0xFF64B5F6).withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF64B5F6).withOpacity(0.3))),
+                          child: Text(t('Ensure video files exist in assets/\n(squat_correct.mp4, squat_incorrect.mp4, etc.)', 'تأكد من وجود ملفات الفيديو في مجلد assets/'), style: const TextStyle(fontSize: 11, color: Color(0xFF64B5F6)), textAlign: TextAlign.center),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

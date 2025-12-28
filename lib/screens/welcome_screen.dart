@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/theme_provider.dart';
+import '../utils/responsive_utils.dart';
 import '../widgets/gradient_button.dart';
 
 /// Welcome Screen - App entry point with branding and action buttons
@@ -58,188 +59,202 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           // Content
           Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32.0),
-              child: Stack(
-                children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      // Logo (Replaced with provided runner logo)
-                      Image.asset(
-                        'assets/runner_logo.png',
-                        height: 400,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(Icons.healing_rounded,
-                              size: 400, color: Theme.of(context).colorScheme.primary);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      // App Name (Arabic and English)
-                      const Text(
-                        'Tamrena-Tech تَمْرِينَتُكَ',
-                        style: TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: Color.fromARGB(230, 0, 255, 166),
-                          letterSpacing: 1.5,
+              padding: ResponsiveUtils.horizontalPadding(context).copyWith(
+                top: ResponsiveUtils.verticalSpacing(context, 32),
+                bottom: ResponsiveUtils.verticalSpacing(context, 32),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveUtils.maxContentWidth(context),
+                ),
+                child: Stack(
+                  children: [
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        // Logo (Replaced with provided runner logo)
+                        Image.asset(
+                          'assets/runner_logo.png',
+                          height: ResponsiveUtils.height(context) * 0.4,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(Icons.healing_rounded,
+                                size: ResponsiveUtils.height(context) * 0.4, 
+                                color: Theme.of(context).colorScheme.primary);
+                          },
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Slogan
-                      Text(
-                        t('Your path to recovery, in your hands.', 'طريقك للشفاء في يديك.'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Color(0xFF8BC34A),
-                          fontStyle: FontStyle.italic,
+                        SizedBox(height: ResponsiveUtils.verticalSpacing(context, 16)),
+                        // App Name (Arabic and English)
+                        Text(
+                          'Tamrena-Tech تَمْرِينَتُكَ',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: ResponsiveUtils.fontSize(context, 34),
+                            fontWeight: FontWeight.w900,
+                            color: const Color.fromARGB(230, 0, 255, 166),
+                            letterSpacing: 1.5,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 48),
-                      // Buttons
-                      GradientButton(
-                        text: t('Create Account', 'إنشاء حساب'),
-                        onPressed: widget.onCreateAccount,
-                        textColor: const Color.fromARGB(255, 255, 255, 255),
-                        startColor: const Color(0xFF8BC34A),
-                        endColor: const Color(0xFFB3E5FC),
-                        icon: const Icon(Icons.person_add_alt_1_rounded,
-                            color: Color.fromARGB(255, 255, 255, 255)),
-                      ),
-                      const SizedBox(height: 20),
-                      GradientButton(
-                        text: t('Login as Doctor', 'تسجيل الدخول كطبيب'),
-                        onPressed: widget.onLoginDoctor,
-                        textColor: const Color.fromARGB(255, 255, 255, 255),
-                        startColor: const Color(0xFF4DD0E1),
-                        endColor: const Color(0xFF00BCD4),
-                        icon: const Icon(Icons.medical_services_rounded,
-                            color: Color.fromARGB(255, 255, 255, 255)),
-                      ),
-                      const SizedBox(height: 20),
-                      GradientButton(
-                        text: t('Login as Patient', 'تسجيل الدخول كمريض'),
-                        onPressed: widget.onLoginPatient,
-                        textColor: Colors.white,
-                        startColor: const Color(0xFF4DD0E1),
-                        endColor: const Color(0xFF00BCD4),
-                        icon: const Icon(Icons.accessibility_new_rounded,
-                            color: Color.fromARGB(255, 255, 255, 255)),
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00BCD4),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.settings, color: Colors.white),
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (BuildContext context) {
-                              return StatefulBuilder(
-                                builder: (context, setState) {
-                                  return AlertDialog(
-                                    title: const Text('Settings'),
-                                    content: SingleChildScrollView(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // Theme Section
-                                          Text(
-                                            'Theme',
-                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Container(
-                                            decoration: BoxDecoration(
-                                              border: Border.all(color: Colors.grey[300]!),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: ListTile(
-                                              title: const Text('Dark Mode'),
-                                              trailing: Switch(
-                                                value: globalThemeProvider.isDarkMode,
-                                                onChanged: (value) {
-                                                  globalThemeProvider.toggleTheme();
-                                                  setState(() {});
-                                                },
-                                                activeThumbColor: const Color(0xFF00BCD4),
+                        SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                        // Slogan
+                        Text(
+                          t('Your path to recovery, in your hands.', 'طريقك للشفاء في يديك.'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: ResponsiveUtils.fontSize(context, 18),
+                            color: const Color(0xFF8BC34A),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        SizedBox(height: ResponsiveUtils.verticalSpacing(context, 48)),
+                        // Buttons
+                        GradientButton(
+                          text: t('Create Account', 'إنشاء حساب'),
+                          onPressed: widget.onCreateAccount,
+                          textColor: const Color.fromARGB(255, 255, 255, 255),
+                          startColor: const Color(0xFF8BC34A),
+                          endColor: const Color(0xFFB3E5FC),
+                          icon: const Icon(Icons.person_add_alt_1_rounded,
+                              color: Color.fromARGB(255, 255, 255, 255)),
+                        ),
+                        SizedBox(height: ResponsiveUtils.spacing(context, 20)),
+                        GradientButton(
+                          text: t('Login as Doctor', 'تسجيل الدخول كطبيب'),
+                          onPressed: widget.onLoginDoctor,
+                          textColor: const Color.fromARGB(255, 255, 255, 255),
+                          startColor: const Color(0xFF4DD0E1),
+                          endColor: const Color(0xFF00BCD4),
+                          icon: const Icon(Icons.medical_services_rounded,
+                              color: Color.fromARGB(255, 255, 255, 255)),
+                        ),
+                        SizedBox(height: ResponsiveUtils.spacing(context, 20)),
+                        GradientButton(
+                          text: t('Login as Patient', 'تسجيل الدخول كمريض'),
+                          onPressed: widget.onLoginPatient,
+                          textColor: Colors.white,
+                          startColor: const Color(0xFF4DD0E1),
+                          endColor: const Color(0xFF00BCD4),
+                          icon: const Icon(Icons.accessibility_new_rounded,
+                              color: Color.fromARGB(255, 255, 255, 255)),
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      top: ResponsiveUtils.isMobile(context) ? 0 : ResponsiveUtils.spacing(context, 16),
+                      right: ResponsiveUtils.isMobile(context) ? 0 : ResponsiveUtils.spacing(context, 16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00BCD4),
+                          borderRadius: BorderRadius.circular(ResponsiveUtils.spacing(context, 12)),
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.settings, 
+                            color: Colors.white,
+                            size: ResponsiveUtils.iconSize(context, 24),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) {
+                                return StatefulBuilder(
+                                  builder: (context, setState) {
+                                    return AlertDialog(
+                                      title: const Text('Settings'),
+                                      content: SingleChildScrollView(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            // Theme Section
+                                            Text(
+                                              'Theme',
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(height: 24),
+                                            const SizedBox(height: 12),
+                                            Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.grey[300]!),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: ListTile(
+                                                title: const Text('Dark Mode'),
+                                                trailing: Switch(
+                                                  value: globalThemeProvider.isDarkMode,
+                                                  onChanged: (value) {
+                                                    globalThemeProvider.toggleTheme();
+                                                    setState(() {});
+                                                  },
+                                                  activeThumbColor: const Color(0xFF00BCD4),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 24),
 
-                                          // Language Section
-                                          Text(
-                                            'Language',
-                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.bold,
+                                            // Language Section
+                                            Text(
+                                              'Language',
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              border: Border.all(color: Colors.grey[300]!),
-                                              borderRadius: BorderRadius.circular(8),
+                                            const SizedBox(height: 12),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: Colors.grey[300]!),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Wrap(
+                                                spacing: 12,
+                                                children: [
+                                                  ChoiceChip(
+                                                    label: const Text('English'),
+                                                    selected: globalThemeProvider.language == 'en',
+                                                    onSelected: (selected) {
+                                                      if (selected) {
+                                                        globalThemeProvider.setLanguage('en');
+                                                        setState(() {});
+                                                      }
+                                                    },
+                                                    selectedColor: const Color(0x3300BCD4),
+                                                  ),
+                                                  ChoiceChip(
+                                                    label: const Text('العربية (Arabic)'),
+                                                    selected: globalThemeProvider.language == 'ar',
+                                                    onSelected: (selected) {
+                                                      if (selected) {
+                                                        globalThemeProvider.setLanguage('ar');
+                                                        setState(() {});
+                                                      }
+                                                    },
+                                                    selectedColor: const Color(0x3300BCD4),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                            child: Wrap(
-                                              spacing: 12,
-                                              children: [
-                                                ChoiceChip(
-                                                  label: const Text('English'),
-                                                  selected: globalThemeProvider.language == 'en',
-                                                  onSelected: (selected) {
-                                                    if (selected) {
-                                                      globalThemeProvider.setLanguage('en');
-                                                      setState(() {});
-                                                    }
-                                                  },
-                                                  selectedColor: const Color(0x3300BCD4),
-                                                ),
-                                                ChoiceChip(
-                                                  label: const Text('العربية (Arabic)'),
-                                                  selected: globalThemeProvider.language == 'ar',
-                                                  onSelected: (selected) {
-                                                    if (selected) {
-                                                      globalThemeProvider.setLanguage('ar');
-                                                      setState(() {});
-                                                    }
-                                                  },
-                                                  selectedColor: const Color(0x3300BCD4),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Close'),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                          );
-                        },
-                        tooltip: 'Settings',
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('Close'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          },
+                          tooltip: 'Settings',
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

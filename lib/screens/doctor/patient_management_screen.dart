@@ -41,23 +41,18 @@ class _PatientManagementScreenState extends State<PatientManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _patientManager.addListener(_onPatientsChanged);
-  }
-
-  void _onPatientsChanged() {
-    setState(() {});
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
-    _patientManager.removeListener(_onPatientsChanged);
     super.dispose();
   }
 
-  void _addPatientToMyCare(PatientData patient) {
-    _patientManager.addToMyCare(patient);
+  void _addPatientToMyCare(PatientData patient) async {
+    await _patientManager.addToMyCare(patient);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content:
@@ -67,8 +62,9 @@ class _PatientManagementScreenState extends State<PatientManagementScreen>
     );
   }
 
-  void _removePatientFromMyCare(PatientData patient) {
-    _patientManager.removeFromMyCare(patient);
+  void _removePatientFromMyCare(PatientData patient) async {
+    await _patientManager.removeFromMyCare(patient);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -133,14 +129,19 @@ class _PatientManagementScreenState extends State<PatientManagementScreen>
 
           // Tab Views
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // My Patients Tab
-                _buildMyPatientsTab(isDark),
-                // All Patients Tab
-                _buildAllPatientsTab(isDark),
-              ],
+            child: ListenableBuilder(
+              listenable: _patientManager,
+              builder: (context, _) {
+                return TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // My Patients Tab
+                    _buildMyPatientsTab(isDark),
+                    // All Patients Tab
+                    _buildAllPatientsTab(isDark),
+                  ],
+                );
+              },
             ),
           ),
         ],

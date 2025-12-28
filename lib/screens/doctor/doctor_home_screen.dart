@@ -37,21 +37,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   void initState() {
     super.initState();
     _manager.addListener(_onSlotsChanged);
-    _patientManager.addListener(_onPatientsChanged);
+    // PatientManager is now a ChangeNotifier, so it will notify automatically
   }
 
   @override
   void dispose() {
     _manager.removeListener(_onSlotsChanged);
-    _patientManager.removeListener(_onPatientsChanged);
     super.dispose();
   }
 
   void _onSlotsChanged() {
-    setState(() {});
-  }
-
-  void _onPatientsChanged() {
     setState(() {});
   }
 
@@ -98,12 +93,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final patients = _patientManager.myPatients;
-    final totalPatients = patients.length;
-    final bookedSlots = patients
-        .where((p) => p.nextAppointment.isNotEmpty && p.nextAppointment != '—')
-        .length;
-
     return Scaffold(
       appBar: CustomAppBar(
           title: t('Doctor Home', 'الصفحة الرئيسية للطبيب'),
@@ -131,26 +120,35 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           const SizedBox(height: 16),
 
           // Summary Cards
-          Row(
-            children: [
-              Expanded(
-                child: _SummaryCard(
-                  title: t('Patients', 'المرضى'),
-                  value: '$totalPatients',
-                  color: const Color(0xFF00BCD4),
-                  icon: Icons.person_outline,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _SummaryCard(
-                  title: t('Booked', 'محجوز'),
-                  value: '$bookedSlots',
-                  color: const Color(0xFF8BC34A),
-                  icon: Icons.event_available,
-                ),
-              ),
-            ],
+          ListenableBuilder(
+            listenable: Listenable.merge([_patientManager, _manager]),
+            builder: (context, _) {
+              final patients = _patientManager.myPatients;
+              final totalPatients = patients.length;
+              final bookedSlots = _manager.bookedCount;
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: t('Patients', 'المرضى'),
+                      value: '$totalPatients',
+                      color: const Color(0xFF00BCD4),
+                      icon: Icons.person_outline,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: t('Booked', 'محجوز'),
+                      value: '$bookedSlots',
+                      color: const Color(0xFF8BC34A),
+                      icon: Icons.event_available,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 24),
@@ -165,32 +163,54 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           const SizedBox(height: 12),
 
           // Patients list
-          if (patients.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Icon(Icons.people_outline,
-                      size: 40,
-                      color: isDark ? Colors.white24 : Colors.grey[400]),
-                  const SizedBox(height: 8),
-                  Text(
-                    t('No patients under your care yet',
-                        'لا يوجد مرضى تحت رعايتك بعد'),
-                    style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black54),
+          ListenableBuilder(
+            listenable: _patientManager,
+            builder: (context, _) {
+              final patients = _patientManager.myPatients;
+
+              if (_patientManager.isLoading) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: CircularProgressIndicator(
+                      color: const Color(0xFF00BCD4),
+                    ),
                   ),
-                ],
-              ),
-            )
-          else
-            ...patients
-                .map((p) => _PatientTile(patient: p, isDark: isDark))
-                .toList(),
+                );
+              }
+
+              if (patients.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.people_outline,
+                          size: 40,
+                          color: isDark ? Colors.white24 : Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        t('No patients under your care yet',
+                            'لا يوجد مرضى تحت رعايتك بعد'),
+                        style: TextStyle(
+                            color:
+                                isDark ? Colors.white54 : Colors.black54),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: patients
+                    .map((p) => _PatientTile(patient: p, isDark: isDark))
+                    .toList(),
+              );
+            },
+          ),
           const SizedBox(height: 24),
 
           // Available Slots Section

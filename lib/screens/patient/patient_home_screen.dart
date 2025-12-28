@@ -61,7 +61,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final patientName = _profileManager.patientName;
+    final patientName = globalThemeProvider.displayName.isNotEmpty
+        ? globalThemeProvider.displayName
+        : _profileManager.patientName;
 
     return Scaffold(
       appBar: CustomAppBar(title: t('Home', 'الرئيسية'), onBack: widget.onBack),
