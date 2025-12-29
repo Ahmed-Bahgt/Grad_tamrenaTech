@@ -18,6 +18,7 @@ import '../../widgets/custom_app_bar.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
 import '../../utils/patient_manager.dart';
+import 'patient_profile_screen.dart';
 
 /// Doctor Home Screen
 class DoctorHomeScreen extends StatefulWidget {
@@ -37,7 +38,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   void initState() {
     super.initState();
     _manager.addListener(_onSlotsChanged);
-    // PatientManager is now a ChangeNotifier, so it will notify automatically
+    // Sync all data from Firestore on app start
+    _syncData();
+  }
+
+  Future<void> _syncData() async {
+    try {
+      await _manager.syncAllData();
+      await _patientManager.syncAllData();
+      debugPrint('[DoctorHomeScreen] All data synced');
+    } catch (e) {
+      debugPrint('[DoctorHomeScreen] Error syncing data: $e');
+    }
   }
 
   @override
@@ -382,7 +394,7 @@ class _SummaryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
+              color: color.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color),
@@ -397,11 +409,19 @@ class _SummaryCard extends StatelessWidget {
                         fontSize: 12,
                         color: isDark ? Colors.white60 : Colors.black54)),
                 const SizedBox(height: 2),
-                Text(value,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                  child: Text(
+                    value,
+                    key: ValueKey<String>(value),
                     style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87)),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -466,6 +486,39 @@ class _PatientTile extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white60 : Colors.black54)),
+                // Remove icon
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  tooltip: t('Remove Patient', 'حذف المريض'),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text(t('Remove Patient', 'حذف المريض')),
+                        content: Text(t('Are you sure you want to remove this patient from your care?', 'هل أنت متأكد أنك تريد إزالة هذا المريض من رعايتك؟')),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: Text(t('Cancel', 'إلغاء')),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text(t('Remove', 'حذف'), style: const TextStyle(color: Colors.redAccent)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await PatientManager().removeFromMyCare(patient);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(t('Patient removed from your care.', 'تم حذف المريض من رعايتك.')),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -488,12 +541,24 @@ class _PatientTile extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(t('Opening patient profile soon',
-                            'سيتم فتح ملف المريض قريباً'))),
+                onPressed: () async {
+                  final result = await Navigator.push<PatientData>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PatientProfileScreen(
+                        patient: patient,
+                        onUpdate: (updatedPatient) async {
+                          await PatientManager().updatePatient(updatedPatient);
+                          Navigator.pop(context, updatedPatient);
+                        },
+                      ),
+                    ),
                   );
+                  // If patient data was updated, refresh the UI
+                  if (result != null) {
+                    // The PatientManager will handle the update
+                    // The home screen will rebuild automatically
+                  }
                 },
                 icon: const Icon(Icons.open_in_new, color: Color(0xFF00BCD4)),
                 label: Text(t('View Profile', 'عرض الملف'),

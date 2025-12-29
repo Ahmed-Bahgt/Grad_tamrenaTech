@@ -55,9 +55,9 @@ class MedicalPlansManager {
       id: 'plan_1',
       name: 'Squat Rehabilitation Plan',
       description: 'A comprehensive plan to strengthen your lower body and improve mobility through guided squats and supporting exercises.',
-      progress: 45.0,
+      progress: 0.0, // Will be calculated from sessions
       totalSessions: 12,
-      completedSessions: 5,
+      completedSessions: 0,
       isActive: true,
       startDate: DateTime.now().subtract(const Duration(days: 7)),
       duration: 6, // weeks
@@ -68,9 +68,9 @@ class MedicalPlansManager {
       id: 'plan_2',
       name: 'Lower Back Pain Management',
       description: 'Evidence-based exercises to strengthen core and reduce lower back pain.',
-      progress: 72.0,
+      progress: 0.0, // Will be calculated from sessions
       totalSessions: 16,
-      completedSessions: 12,
+      completedSessions: 0,
       isActive: false,
       startDate: DateTime.now().subtract(const Duration(days: 30)),
       duration: 8,
@@ -83,7 +83,7 @@ class MedicalPlan {
   final String id;
   final String name;
   final String description;
-  double progress; // 0-100
+  double progress; // 0-100 (can be overridden, but calculated by default)
   final int totalSessions;
   final int completedSessions;
   final bool isActive;
@@ -103,4 +103,10 @@ class MedicalPlan {
     required this.duration,
     required this.exercises,
   });
+
+  /// Calculate progress based on completed sessions vs total sessions
+  double get calculatedProgress {
+    if (totalSessions <= 0) return 0.0;
+    return ((completedSessions / totalSessions) * 100).clamp(0.0, 100.0);
+  }
 }

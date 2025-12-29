@@ -417,8 +417,8 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                         : t('Add Slot', 'إضافة موعد')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _editingIndex != null
-                          ? const Color(0xFF8BC34A)
-                          : const Color(0xFF00BCD4),
+                        ? (isDark ? const Color(0xFF29B6F6) : const Color(0xFF8BC34A))
+                        : const Color(0xFF00BCD4),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(

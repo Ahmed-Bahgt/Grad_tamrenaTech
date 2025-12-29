@@ -5,7 +5,7 @@ import 'pose_analyzer.dart';
 
 /// Complete squat counting logic ported from Python process_frame_squat.py
 /// Handles state machine, rep counting, and real-time feedback.
-/// 
+///
 /// State machine: s1 (NORMAL) -> s2 (TRANS) -> s3 (PASS) -> s1 = 1 rep
 class SquatProcessor {
   final PoseThresholdConfig thresholds;
@@ -13,9 +13,12 @@ class SquatProcessor {
   final int targetSets;
 
   // State tracking
-  int _currentSet = 0;
+  int _currentSet = 1;
   int _correctReps = 0;
   int _incorrectReps = 0;
+  int _totalCorrectReps = 0; // Track cumulative correct reps across all sets
+  int _totalIncorrectReps =
+      0; // Track cumulative incorrect reps across all sets
   List<String> _stateSequence = [];
   String? _currentState;
 
@@ -32,13 +35,17 @@ class SquatProcessor {
 
   int get correctReps => _correctReps;
   int get incorrectReps => _incorrectReps;
+  int get totalCorrectReps => _totalCorrectReps;
+  int get totalIncorrectReps => _totalIncorrectReps;
   int get currentSet => _currentSet;
-  bool get sessionComplete => _currentSet >= targetSets;
+  bool get sessionComplete => _currentSet > targetSets;
 
   void reset() {
-    _currentSet = 0;
+    _currentSet = 1;
     _correctReps = 0;
     _incorrectReps = 0;
+    _totalCorrectReps = 0;
+    _totalIncorrectReps = 0;
     _stateSequence = [];
     _currentState = null;
     _lowerHips = false;
@@ -79,13 +86,21 @@ class SquatProcessor {
 
     // Choose side robustly: prefer side with both shoulder and ankle visible.
     // If only one side has required joints, use that side.
-    final leftAvailable = leftShoulder != null && leftAnkle != null && leftHip != null && leftKnee != null;
-    final rightAvailable = rightShoulder != null && rightAnkle != null && rightHip != null && rightKnee != null;
+    final leftAvailable = leftShoulder != null &&
+        leftAnkle != null &&
+        leftHip != null &&
+        leftKnee != null;
+    final rightAvailable = rightShoulder != null &&
+        rightAnkle != null &&
+        rightHip != null &&
+        rightKnee != null;
 
     if (!leftAvailable && !rightAvailable) {
       // Fallback: try any side with hip+knee+ankle (shoulder may be missing for angle calc at hip)
-      final leftMinimal = leftHip != null && leftKnee != null && leftAnkle != null;
-      final rightMinimal = rightHip != null && rightKnee != null && rightAnkle != null;
+      final leftMinimal =
+          leftHip != null && leftKnee != null && leftAnkle != null;
+      final rightMinimal =
+          rightHip != null && rightKnee != null && rightAnkle != null;
       if (!leftMinimal && !rightMinimal) {
         return SquatProcessResult(
           correctReps: _correctReps,
@@ -135,7 +150,7 @@ class SquatProcessor {
             _Point(hip.x, 0), // vertical reference
             _Point(hip.x, hip.y),
           )
-      : 0.0;
+        : 0.0;
 
     final kneeVertAngle = _findAngle(
       _Point(hip.x, hip.y),
@@ -152,38 +167,47 @@ class SquatProcessor {
     // Get current state based on knee angle
     final state = _getState(kneeVertAngle.toInt());
     _currentState = state;
-    debugPrint('[SquatProcessor] kneeAngle=${kneeVertAngle.toStringAsFixed(1)}°, state=$state, seq=$_stateSequence');
+    debugPrint(
+        '[SquatProcessor] kneeAngle=${kneeVertAngle.toStringAsFixed(1)}°, state=$state, seq=$_stateSequence');
     _updateStateSequence(state);
 
     bool repCounted = false;
 
     // State machine logic: s1 -> s2 -> s3 -> s1 = 1 rep
     if (state == 's1') {
-      debugPrint('[SquatProcessor] In s1, checking seq=$_stateSequence, incorrectPosture=$_incorrectPosture');
+      debugPrint(
+          '[SquatProcessor] In s1, checking seq=$_stateSequence, incorrectPosture=$_incorrectPosture');
       // Python logic: count CORRECT when both s2 and s3 occurred in sequence
       // before returning to s1, and posture is not incorrect.
       if (_stateSequence.contains('s2') &&
           _stateSequence.contains('s3') &&
           !_incorrectPosture) {
         _correctReps++;
+        _totalCorrectReps++;
         repCounted = true;
-        debugPrint('[SquatProcessor] Correct rep #$_correctReps');
+        debugPrint(
+            '[SquatProcessor] Correct rep #$_correctReps (total: $_totalCorrectReps)');
       } else if (_stateSequence.contains('s2') &&
           !_stateSequence.contains('s3')) {
         // Incomplete squat (reached TRANS only)
         _incorrectReps++;
+        _totalIncorrectReps++;
         repCounted = true;
-        debugPrint('[SquatProcessor] Incorrect rep #$_incorrectReps (incomplete)');
+        debugPrint(
+            '[SquatProcessor] Incorrect rep #$_incorrectReps (total: $_totalIncorrectReps) (incomplete)');
       } else if (_incorrectPosture) {
         // Squat with bad posture
         _incorrectReps++;
+        _totalIncorrectReps++;
         repCounted = true;
-        debugPrint('[SquatProcessor] Incorrect rep #$_incorrectReps (posture)');
+        debugPrint(
+            '[SquatProcessor] Incorrect rep #$_incorrectReps (total: $_totalIncorrectReps) (posture)');
       }
 
       // If no rep was counted, log why
       if (!repCounted && _stateSequence.isNotEmpty) {
-        debugPrint('[SquatProcessor] ⚠️ No rep counted - seq=$_stateSequence (need s2 AND s3)');
+        debugPrint(
+            '[SquatProcessor] ⚠️ No rep counted - seq=$_stateSequence (need s2 AND s3)');
       }
 
       _stateSequence = [];
@@ -194,7 +218,7 @@ class SquatProcessor {
       if (totalReps >= targetReps) {
         _currentSet++;
         debugPrint('[SquatProcessor] Set $_currentSet complete!');
-        _correctReps = 0;
+        _correctReps = 0; // Reset per-set counters
         _incorrectReps = 0;
       }
     }

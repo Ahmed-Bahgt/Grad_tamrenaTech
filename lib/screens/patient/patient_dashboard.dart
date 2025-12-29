@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
+import '../../utils/patient_bookings_manager.dart';
 import 'patient_home_screen.dart';
 import 'patient_book_screen.dart';
 import 'patient_community_screen.dart';
@@ -12,7 +13,7 @@ class PatientDashboard extends StatefulWidget {
   final VoidCallback? onSettings;
   final ThemeProvider? themeProvider;
   final VoidCallback? onBackToWelcome;
-  
+
   const PatientDashboard({
     super.key,
     this.onLogout,
@@ -29,14 +30,34 @@ class _PatientDashboardState extends State<PatientDashboard> {
   int _selectedIndex = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _syncAllDataFromFirestore();
+  }
+
+  /// Sync all patient data from Firestore on app startup
+  Future<void> _syncAllDataFromFirestore() async {
+    try {
+      debugPrint('[PatientDashboard] Syncing all data from Firestore...');
+      await PatientBookingsManager().refresh();
+      debugPrint('[PatientDashboard] All data synced successfully');
+    } catch (e) {
+      debugPrint('[PatientDashboard] Error syncing data: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor:
+          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
-          onPressed: widget.onBackToWelcome ?? () => Navigator.maybePop(context),
+          icon: Icon(Icons.arrow_back_ios,
+              color: Theme.of(context).colorScheme.primary),
+          onPressed:
+              widget.onBackToWelcome ?? () => Navigator.maybePop(context),
         ),
         title: const Text('Patient Dashboard'),
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
@@ -55,7 +76,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 value: 'settings',
                 child: Row(
                   children: [
-                    Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.black54),
+                    Icon(Icons.settings,
+                        color: isDark ? Colors.white70 : Colors.black54),
                     const SizedBox(width: 12),
                     Text(t('Settings', 'الإعدادات')),
                   ],
@@ -78,7 +100,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          PatientHomeScreen(onBack: widget.onBackToWelcome),
+          PatientHomeScreen(
+            onBack: widget.onBackToWelcome,
+          ),
           PatientBookScreen(onBack: widget.onBackToWelcome),
           PatientCommunityScreen(onBack: widget.onBackToWelcome),
           NutritionChatbotScreen(onBack: widget.onBackToWelcome),
@@ -121,7 +145,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
         return AlertDialog(
           title: Text(t('Logout', 'تسجيل الخروج')),
           content: Text(
-            t('Are you sure you want to logout?', 'هل أنت متأكد أنك تريد تسجيل الخروج؟'),
+            t('Are you sure you want to logout?',
+                'هل أنت متأكد أنك تريد تسجيل الخروج؟'),
           ),
           actions: [
             TextButton(

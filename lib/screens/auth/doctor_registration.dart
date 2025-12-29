@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../utils/theme_provider.dart';
+import '../../utils/responsive_utils.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_form_field.dart';
@@ -51,6 +52,8 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final padding = ResponsiveUtils.padding(context, 24);
+    final spacing = ResponsiveUtils.spacing(context, 30);
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
       appBar: CustomAppBar(
@@ -59,11 +62,11 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
         onBack: currentStep == 0 ? widget.onBack : previousStep,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: EdgeInsets.all(padding),
         child: Column(
           children: [
             _buildStepProgress(),
-            const SizedBox(height: 30),
+            SizedBox(height: spacing),
             Form(
               key: _formKey,
               child: _buildCurrentStep(),
@@ -84,7 +87,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
         return Expanded(
           child: Container(
             height: 8,
-            margin: EdgeInsets.only(right: index < 2 ? 8.0 : 0),
+            margin: EdgeInsets.only(right: index < 2 ? ResponsiveUtils.spacing(context, 8) : 0),
             decoration: BoxDecoration(
               color: isCompleted
                   ? const Color(0xFF8BC34A)
@@ -123,16 +126,20 @@ class Step1PrimaryInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final spacing = ResponsiveUtils.spacing(context, 20);
+    final buttonSpacing = ResponsiveUtils.spacing(context, 16);
+    final largeSpacing = ResponsiveUtils.spacing(context, 40);
+    final fontSize = ResponsiveUtils.fontSize(context, 16);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(t('Enter your primary account details.', 'أدخل تفاصيل حسابك الأساسية'),
-            style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black54)),
-        const SizedBox(height: 20),
+            style: TextStyle(fontSize: fontSize, color: isDark ? Colors.white70 : Colors.black54)),
+        SizedBox(height: spacing),
         Row(
           children: [
             Expanded(child: CustomFormField(t('First Name', 'الاسم الأول'))),
-            const SizedBox(width: 16),
+            SizedBox(width: buttonSpacing),
             Expanded(child: CustomFormField(t('Last Name', 'اسم العائلة'))),
           ],
         ),
@@ -142,8 +149,12 @@ class Step1PrimaryInfo extends StatelessWidget {
             t('Phone Number', 'رقم الهاتف'), keyboardType: TextInputType.phone),
         CustomFormField(t('Password', 'كلمة المرور'), isPassword: true),
         CustomFormField(t('Confirm Password', 'تأكيد كلمة المرور'), isPassword: true),
-        const SizedBox(height: 40),
-        GradientButton(text: t('Next', 'التالي'), onPressed: onNext),
+        SizedBox(height: largeSpacing),
+        SizedBox(
+          height: ResponsiveUtils.buttonHeight(context),
+          width: double.infinity,
+          child: GradientButton(text: t('Next', 'التالي'), onPressed: onNext),
+        ),
       ],
     );
   }
@@ -259,15 +270,19 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final spacing = ResponsiveUtils.spacing(context, 20);
+    final smallSpacing = ResponsiveUtils.spacing(context, 8);
+    final fontSize = ResponsiveUtils.fontSize(context, 16);
+    final smallFontSize = ResponsiveUtils.fontSize(context, 14);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(t('Primary Qualification Details', 'تفاصيل المؤهل الأساسي'),
-            style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black54)),
-        const SizedBox(height: 20),
+            style: TextStyle(fontSize: fontSize, color: isDark ? Colors.white70 : Colors.black54)),
+        SizedBox(height: spacing),
         CustomFormField(t('University Name', 'اسم الجامعة')),
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          padding: EdgeInsets.symmetric(vertical: smallSpacing),
           child: TextFormField(
             controller: _gradDateController,
             readOnly: true,
@@ -280,10 +295,10 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
             style: TextStyle(color: isDark ? const Color(0xFFDEE2E6) : Colors.black87),
           ),
         ),
-        const SizedBox(height: 20),
+        SizedBox(height: spacing),
         Text(t('Graduation Certificate', 'شهادة التخرج'),
-            style: const TextStyle(fontSize: 14, color: Color(0xFF00BCD4))),
-        const SizedBox(height: 8),
+            style: TextStyle(fontSize: smallFontSize, color: const Color(0xFF00BCD4))),
+        SizedBox(height: smallSpacing),
         GestureDetector(
           onTap: _pickCertificate,
           child: Container(
@@ -320,39 +335,45 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
                         style: TextStyle(
                           color: isDark ? Colors.white54 : Colors.grey[600],
                           fontWeight: FontWeight.w500,
+                          fontSize: ResponsiveUtils.fontSize(context, 14),
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: ResponsiveUtils.spacing(context, 4)),
                       Text(
                         t('(Max 5MB)', '(الحد الأقصى 5 ميجابايت)'),
                         style: TextStyle(
                           color: isDark ? Colors.white38 : Colors.grey[500],
-                          fontSize: 12,
+                          fontSize: ResponsiveUtils.fontSize(context, 12),
                         ),
                       ),
                     ],
                   ),
           ),
         ),
-        const SizedBox(height: 40),
+        SizedBox(height: ResponsiveUtils.spacing(context, 40)),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton(
-                onPressed: widget.onPrevious,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  side: const BorderSide(color: Color(0xFF00BCD4)),
+              child: SizedBox(
+                height: ResponsiveUtils.buttonHeight(context),
+                child: OutlinedButton(
+                  onPressed: widget.onPrevious,
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    side: const BorderSide(color: Color(0xFF00BCD4)),
+                  ),
+                  child: Text(t('Previous', 'السابق'),
+                      style: const TextStyle(color: Color(0xFF00BCD4))),
                 ),
-                child: Text(t('Previous', 'السابق'),
-                    style: const TextStyle(color: Color(0xFF00BCD4))),
               ),
             ),
-            const SizedBox(width: 16),
+            SizedBox(width: ResponsiveUtils.spacing(context, 16)),
             Expanded(
-              child: GradientButton(text: t('Next', 'التالي'), onPressed: widget.onNext),
+              child: SizedBox(
+                height: ResponsiveUtils.buttonHeight(context),
+                child: GradientButton(text: t('Next', 'التالي'), onPressed: widget.onNext),
+              ),
             ),
           ],
         ),

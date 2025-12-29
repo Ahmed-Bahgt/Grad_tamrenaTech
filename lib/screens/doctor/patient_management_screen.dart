@@ -80,8 +80,8 @@ class _PatientManagementScreenState extends State<PatientManagementScreen>
       MaterialPageRoute(
         builder: (context) => PatientProfileScreen(
           patient: patient,
-          onUpdate: (updatedPatient) {
-            _patientManager.updatePatient(updatedPatient);
+          onUpdate: (updatedPatient) async {
+            await _patientManager.updatePatient(updatedPatient);
           },
         ),
       ),

@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -39,10 +42,17 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
   // Graduation
   final _gradDateCtrl = TextEditingController();
   File? _certificateFile;
+  String? _certificateUploadedUrl;
+  bool _uploadingCertificate = false;
   final ImagePicker _imagePicker = ImagePicker();
 
   // Qualifications
   final List<_QualificationItem> _qualifications = [];
+  int? _uploadingQualificationIndex;
+
+  // Cloudinary configuration (unsigned preset)
+  static const String _cloudName = 'drcaukx3q';
+  static const String _uploadPreset = 'tamren_preset';
 
   bool _submitting = false;
 
@@ -116,6 +126,52 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
     });
   }
 
+  void _editCertificate() {
+    setState(() {
+      _certificateFile = null;
+      _certificateUploadedUrl = null;
+    });
+  }
+
+  Future<void> _uploadCertificateStandalone() async {
+    if (_certificateFile == null) {
+      _showSnack(t('Select a certificate file first.', 'اختر ملف الشهادة أولاً.'));
+      return;
+    }
+    setState(() => _uploadingCertificate = true);
+    try {
+      final url = await _uploadCertificateToCloudinary(_certificateFile!);
+      _certificateUploadedUrl = url;
+      _showSnack(t('Certificate uploaded successfully.', 'تم رفع الشهادة بنجاح.'));
+    } catch (e) {
+      _showSnack(t('Certificate upload failed. Try again.', 'فشل رفع الشهادة. حاول مجدداً.'));
+      debugPrint('⚠️ Certificate upload (standalone) failed: $e');
+    } finally {
+      if (mounted) setState(() => _uploadingCertificate = false);
+    }
+  }
+
+  Future<void> _uploadQualificationStandalone(int index) async {
+    if (index < 0 || index >= _qualifications.length) return;
+    final item = _qualifications[index];
+    if (item.file == null) {
+      _showSnack(t('Select a qualification file first.', 'اختر ملف المؤهل أولاً.'));
+      return;
+    }
+
+    setState(() => _uploadingQualificationIndex = index);
+    try {
+      final url = await _uploadCertificateToCloudinary(item.file!);
+      item.uploadedUrl = url;
+      _showSnack(t('Qualification uploaded successfully.', 'تم رفع المؤهل بنجاح.'));
+    } catch (e) {
+      _showSnack(t('Qualification upload failed. Try again.', 'فشل رفع المؤهل. حاول مجدداً.'));
+      debugPrint('⚠️ Qualification upload (standalone) failed: $e');
+    } finally {
+      if (mounted) setState(() => _uploadingQualificationIndex = null);
+    }
+  }
+
   Future<void> _pickQualificationImage(int index) async {
     final picked = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600, maxHeight: 1600);
     if (picked != null) {
@@ -129,6 +185,27 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       final path = result.files.single.path;
       if (path != null) setState(() => _qualifications[index].file = File(path));
     }
+  }
+
+  Future<String> _uploadCertificateToCloudinary(File file) async {
+    final uri = Uri.parse('https://api.cloudinary.com/v1_1/$_cloudName/image/upload');
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['upload_preset'] = _uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', file.path));
+
+    final streamed = await request.send();
+    if (streamed.statusCode != 200) {
+      throw Exception('Cloudinary upload failed with status ${streamed.statusCode}');
+    }
+
+    final bytes = await streamed.stream.toBytes();
+    final body = String.fromCharCodes(bytes);
+    final decoded = jsonDecode(body) as Map<String, dynamic>;
+    final url = decoded['secure_url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw Exception('Cloudinary response missing secure_url');
+    }
+    return url;
   }
 
   Future<void> _submit() async {
@@ -158,15 +235,12 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       bool uploadWarning = false;
 
       // Upload certificate
-      String? certificateUrl;
-      if (_certificateFile != null) {
-        debugPrint('🔥 Firebase: Uploading doctor certificate...');
+      String? certificateUrl = _certificateUploadedUrl;
+      if (certificateUrl == null && _certificateFile != null) {
+        debugPrint('🔥 Cloudinary: Uploading doctor certificate...');
         try {
-          certificateUrl = await _authService.uploadCertificate(
-            file: _certificateFile!,
-            uid: userCredential.user!.uid,
-          );
-          debugPrint('🔥 Firebase: Certificate uploaded to: $certificateUrl');
+          certificateUrl = await _uploadCertificateToCloudinary(_certificateFile!);
+          debugPrint('🔥 Cloudinary: Certificate uploaded to: $certificateUrl');
         } catch (e) {
           uploadWarning = true;
           debugPrint('⚠️ Certificate upload failed: $e');
@@ -178,14 +252,10 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       if (_qualifications.isNotEmpty) {
         uploadedQualifications = [];
         for (final q in _qualifications.where((q) => q.nameCtrl.text.trim().isNotEmpty)) {
-          String? url;
-          if (q.file != null) {
+          String? url = q.uploadedUrl;
+          if (url == null && q.file != null) {
             try {
-              url = await _authService.uploadQualificationFile(
-                file: q.file!,
-                uid: userCredential.user!.uid,
-                name: q.nameCtrl.text.trim(),
-              );
+              url = await _uploadCertificateToCloudinary(q.file!);
             } catch (e) {
               uploadWarning = true;
               debugPrint('⚠️ Qualification upload failed: $e');
@@ -220,6 +290,14 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
         certificateUrl: certificateUrl,
         qualifications: uploadedQualifications,
       );
+
+      // Mirror certificate URL into doctors collection
+      if (certificateUrl != null) {
+        await FirebaseFirestore.instance
+            .collection('doctors')
+            .doc(userCredential.user!.uid)
+            .set({'certificateUrl': certificateUrl}, SetOptions(merge: true));
+      }
 
       debugPrint('🔥 Firebase: ✅ Registration complete');
 
@@ -281,25 +359,33 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
                 _GraduationScreen(
                   gradDateCtrl: _gradDateCtrl,
                   certificateFile: _certificateFile,
+                  uploadedUrl: _certificateUploadedUrl,
+                  uploading: _uploadingCertificate,
                   isDark: isDark,
                   onPickDate: _pickGradDate,
                   onPickPhoto: _pickCertificateFromGallery,
                   onPickFile: _pickCertificateFile,
+                  onUpload: _uploadCertificateStandalone,
+                  onEdit: _editCertificate,
                   onNext: () {
-                    if (_gradDateCtrl.text.isNotEmpty && _certificateFile != null) {
-                      _goNext();
+                    if (_gradDateCtrl.text.isEmpty) {
+                      _showSnack(t('Please enter graduation date.', 'يرجى إدخال تاريخ التخرج.'));
+                    } else if (_certificateUploadedUrl == null) {
+                      _showSnack(t('Please upload the graduation certificate.', 'يرجى رفع شهادة التخرج.'));
                     } else {
-                      _showSnack(t('Please complete graduation details.', 'يرجى إكمال تفاصيل التخرج.'));
+                      _goNext();
                     }
                   },
                 ),
                 _QualificationsScreen(
                   items: _qualifications,
                   isDark: isDark,
+                  uploadingIndex: _uploadingQualificationIndex,
                   onAdd: _addQualification,
                   onDelete: _removeQualification,
                   onPickPhoto: _pickQualificationImage,
                   onPickFile: _pickQualificationFileAny,
+                  onUpload: _uploadQualificationStandalone,
                   onNext: _submit,
                   submitting: _submitting,
                 ),
@@ -359,20 +445,20 @@ class _PrimaryInfoScreen extends StatelessWidget {
               decoration: InputDecoration(labelText: t('First Name', 'الاسم الأول')),
               validator: (v) => (v == null || v.trim().isEmpty) ? t('Required', 'مطلوب') : null,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: ResponsiveUtils.spacing(context, 8)),
             TextFormField(
               controller: lastNameCtrl,
               decoration: InputDecoration(labelText: t('Last Name', 'اسم العائلة')),
               validator: (v) => (v == null || v.trim().isEmpty) ? t('Required', 'مطلوب') : null,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: ResponsiveUtils.spacing(context, 8)),
             TextFormField(
               controller: emailCtrl,
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(labelText: t('Email', 'البريد الإلكتروني')),
               validator: (v) => (v == null || !v.contains('@')) ? t('Enter a valid email', 'أدخل بريدًا صالحًا') : null,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: ResponsiveUtils.spacing(context, 8)),
             TextFormField(
               controller: passwordCtrl,
               obscureText: !showPassword,
@@ -385,7 +471,7 @@ class _PrimaryInfoScreen extends StatelessWidget {
               ),
               validator: (v) => (v == null || v.length < 6) ? t('Password must be 6+ chars', 'كلمة المرور يجب أن تكون 6 أحرف على الأقل') : null,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: ResponsiveUtils.spacing(context, 8)),
             TextFormField(
               controller: confirmPasswordCtrl,
               obscureText: !showConfirmPassword,
@@ -398,8 +484,12 @@ class _PrimaryInfoScreen extends StatelessWidget {
               ),
               validator: (v) => (v != passwordCtrl.text) ? t('Passwords do not match', 'كلمتا المرور غير متطابقتين') : null,
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: onNext, child: Text(t('Next', 'التالي'))),
+            SizedBox(height: ResponsiveUtils.spacing(context, 16)),
+            SizedBox(
+              height: ResponsiveUtils.buttonHeight(context),
+              width: double.infinity,
+              child: ElevatedButton(onPressed: onNext, child: Text(t('Next', 'التالي'))),
+            ),
           ],
         ),
       ),
@@ -410,26 +500,35 @@ class _PrimaryInfoScreen extends StatelessWidget {
 class _GraduationScreen extends StatelessWidget {
   final TextEditingController gradDateCtrl;
   final File? certificateFile;
+  final String? uploadedUrl;
+  final bool uploading;
   final bool isDark;
   final VoidCallback onPickDate;
   final VoidCallback onPickPhoto;
   final VoidCallback onPickFile;
+  final VoidCallback onUpload;
+  final VoidCallback onEdit;
   final VoidCallback onNext;
 
   const _GraduationScreen({
     required this.gradDateCtrl,
     required this.certificateFile,
+    required this.uploadedUrl,
+    required this.uploading,
     required this.isDark,
     required this.onPickDate,
     required this.onPickPhoto,
     required this.onPickFile,
+    required this.onUpload,
+    required this.onEdit,
     required this.onNext,
   });
 
   @override
   Widget build(BuildContext context) {
+    final padding = ResponsiveUtils.padding(context, 16);
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(padding),
       child: ListView(
         children: [
           TextFormField(
@@ -441,30 +540,34 @@ class _GraduationScreen extends StatelessWidget {
               suffixIcon: const Icon(Icons.calendar_today),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: ResponsiveUtils.spacing(context, 12)),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text(t('Graduation Certificate', 'شهادة التخرج'), style: const TextStyle(fontWeight: FontWeight.w600)),
+            child: Text(t('Graduation Certificate', 'شهادة التخرج'), style: TextStyle(fontWeight: FontWeight.w600, fontSize: ResponsiveUtils.fontSize(context, 14))),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: ResponsiveUtils.spacing(context, 8)),
           Row(
             children: [
-              ElevatedButton.icon(
-                onPressed: onPickPhoto,
-                icon: const Icon(Icons.photo_library),
-                label: Text(t('Pick Photo', 'اختر صورة')),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onPickPhoto,
+                  icon: const Icon(Icons.photo_library),
+                  label: Text(t('Photo', 'صورة')),
+                ),
               ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: onPickFile,
-                icon: const Icon(Icons.attach_file),
-                label: Text(t('Pick File', 'اختر ملف')),
+              SizedBox(width: ResponsiveUtils.spacing(context, 8)),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onPickFile,
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(t('File', 'ملف')),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: ResponsiveUtils.spacing(context, 8)),
           Container(
-            height: 160,
+            height: ResponsiveUtils.height(context) * 0.2,
             width: double.infinity,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
@@ -472,11 +575,49 @@ class _GraduationScreen extends StatelessWidget {
               border: Border.all(color: certificateFile != null ? Colors.green : (isDark ? Colors.white24 : Colors.grey[300]!)),
             ),
             child: certificateFile != null
-                ? Center(child: Text(certificateFile!.uri.pathSegments.last, textAlign: TextAlign.center))
-                : Center(child: Text(t('No file selected', 'لم يتم اختيار ملف'))),
+                ? Center(child: Padding(
+                    padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 8)),
+                    child: Text(certificateFile!.uri.pathSegments.last, textAlign: TextAlign.center, style: TextStyle(fontSize: ResponsiveUtils.fontSize(context, 12))),
+                  ))
+                : Center(child: Text(t('No file selected', 'لم يتم اختيار ملف'), style: TextStyle(fontSize: ResponsiveUtils.fontSize(context, 14)))),
           ),
-          const SizedBox(height: 16),
-          ElevatedButton(onPressed: onNext, child: Text(t('Next', 'التالي'))),
+          SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+          if (uploadedUrl != null) ...[
+            SizedBox(
+              height: ResponsiveUtils.buttonHeight(context),
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit),
+                label: Text(t('Edit', 'تعديل')),
+              ),
+            ),
+            SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+          ],
+          SizedBox(
+            height: ResponsiveUtils.buttonHeight(context),
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: (!uploading && certificateFile != null) ? onUpload : null,
+              icon: const Icon(Icons.cloud_upload),
+              label: Text(
+                uploading
+                    ? t('Uploading...', 'جارٍ الرفع...')
+                    : (uploadedUrl != null
+                        ? t('Re-upload', 'إعادة رفع')
+                        : t('Upload', 'رفع')),
+              ),
+            ),
+          ),
+          SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+          SizedBox(
+            height: ResponsiveUtils.buttonHeight(context),
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: uploadedUrl != null ? onNext : null,
+              child: Text(t('Next', 'التالي')),
+            ),
+          ),
         ],
       ),
     );
@@ -486,47 +627,52 @@ class _GraduationScreen extends StatelessWidget {
 class _QualificationsScreen extends StatelessWidget {
   final List<_QualificationItem> items;
   final bool isDark;
+  final int? uploadingIndex;
   final VoidCallback onAdd;
   final void Function(int index) onDelete;
   final void Function(int index) onPickPhoto;
   final void Function(int index) onPickFile;
+  final Future<void> Function(int index) onUpload;
   final VoidCallback onNext;
   final bool submitting;
 
   const _QualificationsScreen({
     required this.items,
     required this.isDark,
+    required this.uploadingIndex,
     required this.onAdd,
     required this.onDelete,
     required this.onPickPhoto,
     required this.onPickFile,
+    required this.onUpload,
     required this.onNext,
     required this.submitting,
   });
 
   @override
   Widget build(BuildContext context) {
+    final padding = ResponsiveUtils.padding(context, 16);
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(padding),
       child: ListView(
         children: [
-          Row(
-            children: [
-              ElevatedButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add),
-                label: Text(t('Add Qualification', 'إضافة مؤهل')),
-              ),
-            ],
+          SizedBox(
+            height: ResponsiveUtils.buttonHeight(context),
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: Text(t('Add Qualification', 'إضافة مؤهل')),
+            ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: ResponsiveUtils.spacing(context, 8)),
           ...List.generate(items.length, (index) {
             final item = items[index];
             return Card(
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isDark ? Colors.white24 : Colors.grey[300]!)),
               child: Padding(
-                padding: const EdgeInsets.all(12.0),
+                padding: EdgeInsets.all(ResponsiveUtils.padding(context, 12)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -542,23 +688,52 @@ class _QualificationsScreen extends StatelessWidget {
                         IconButton(onPressed: () => item.toggleEdit(), icon: const Icon(Icons.edit_outlined)),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Row(
+                    SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () => onPickPhoto(index),
-                          icon: const Icon(Icons.photo_library),
-                          label: Text(t('Pick Photo', 'اختر صورة')),
+                        SizedBox(
+                          height: ResponsiveUtils.buttonHeight(context),
+                          child: ElevatedButton.icon(
+                            onPressed: () => onPickPhoto(index),
+                            icon: const Icon(Icons.photo_library),
+                            label: Text(t('Photo', 'صورة')),
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => onPickFile(index),
-                          icon: const Icon(Icons.attach_file),
-                          label: Text(t('Pick File', 'اختر ملف')),
+                        SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                        SizedBox(
+                          height: ResponsiveUtils.buttonHeight(context),
+                          child: OutlinedButton.icon(
+                            onPressed: () => onPickFile(index),
+                            icon: const Icon(Icons.attach_file),
+                            label: Text(t('File', 'ملف')),
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        if (item.file != null)
-                          Flexible(child: Text(item.file!.uri.pathSegments.last, overflow: TextOverflow.ellipsis)),
+                        SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                        SizedBox(
+                          height: ResponsiveUtils.buttonHeight(context),
+                          child: ElevatedButton.icon(
+                            onPressed: (item.file != null && uploadingIndex != index)
+                                ? () => onUpload(index)
+                                : null,
+                            icon: const Icon(Icons.cloud_upload),
+                            label: Text(
+                              uploadingIndex == index
+                                  ? t('Uploading...', 'جارٍ الرفع...')
+                                  : (item.uploadedUrl != null
+                                      ? t('Re-upload', 'إعادة الرفع')
+                                      : t('Upload', 'رفع')),
+                            ),
+                          ),
+                        ),
+                        if (item.file != null) ...[
+                          SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                          Text(
+                            t('File: ', 'الملف: ') + item.file!.uri.pathSegments.last,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: ResponsiveUtils.fontSize(context, 12)),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -582,6 +757,7 @@ class _QualificationsScreen extends StatelessWidget {
 class _QualificationItem {
   final TextEditingController nameCtrl = TextEditingController();
   File? file;
+  String? uploadedUrl;
   bool isEditing = true;
   void toggleEdit() {
     isEditing = !isEditing;
@@ -596,12 +772,14 @@ class _ProgressHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hPadding = ResponsiveUtils.padding(context, 16);
+    final vPadding = ResponsiveUtils.padding(context, 12);
     final labels = [
       t('Primary', 'أساسي'),
       t('Graduation', 'التخرج'),
       t('Qualifications', 'المؤهلات'),
     ];
-    final icons = const [
+    const icons = [
       Icons.person_outline,
       Icons.school_outlined,
       Icons.workspace_premium_outlined,
@@ -613,7 +791,7 @@ class _ProgressHeader extends StatelessWidget {
     final muted = isDark ? Colors.white24 : Colors.black12;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: vPadding),
       decoration: BoxDecoration(color: bg, boxShadow: [BoxShadow(color: muted, blurRadius: 8)]),
       child: Column(
         children: [

@@ -36,6 +36,9 @@ class PatientProfileScreen extends StatefulWidget {
 
 class _PatientProfileScreenState extends State<PatientProfileScreen> {
   late TextEditingController _notesController;
+  late TextEditingController _sessionsController;
+  late TextEditingController _setsController;
+  late TextEditingController _repsController;
   late String _selectedPlan;
 
   final List<String> _planOptions = [
@@ -48,31 +51,89 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   void initState() {
     super.initState();
     _notesController = TextEditingController(text: widget.patient.notes);
+    _sessionsController = TextEditingController(text: widget.patient.sessions.toString());
+    _setsController = TextEditingController(text: widget.patient.sets.toString());
+    _repsController = TextEditingController(text: widget.patient.reps.toString());
     _selectedPlan = widget.patient.assignedPlan;
   }
 
   @override
   void dispose() {
     _notesController.dispose();
+    _sessionsController.dispose();
+    _setsController.dispose();
+    _repsController.dispose();
     super.dispose();
   }
 
-  void _submitChanges() {
+  void _submitChanges() async {
     final updatedPatient = widget.patient.copyWith(
       assignedPlan: _selectedPlan,
       notes: _notesController.text,
+      sessions: int.tryParse(_sessionsController.text) ?? widget.patient.sessions,
+      sets: int.tryParse(_setsController.text) ?? widget.patient.sets,
+      reps: int.tryParse(_repsController.text) ?? widget.patient.reps,
     );
 
-    widget.onUpdate(updatedPatient);
+    // Show loading dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Text(t('Saving changes...', 'جاري حفظ التغييرات...')),
+            ],
+          ),
+        ),
+      );
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(t('Patient details updated', 'تم تحديث بيانات المريض')),
-        backgroundColor: Colors.green,
-      ),
-    );
+    try {
+      final result = widget.onUpdate(updatedPatient);
+      if (result is Future) {
+        await result;
+      }
+      
+      if (!mounted) return;
+      
+      // Close loading dialog
+      Navigator.pop(context);
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t('Patient details updated', 'تم تحديث بيانات المريض')),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
 
-    Navigator.pop(context);
+      // Wait for snackbar to display then navigate back
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Close loading dialog
+      Navigator.pop(context);
+      
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t('Error saving patient: ', 'خطأ في حفظ المريض: ') + e.toString()),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      debugPrint('Error in _submitChanges: $e');
+    }
   }
 
   @override
@@ -273,6 +334,74 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Training Parameters
+                  Text(
+                    t('Training Parameters', 'معايير التدريب'),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _sessionsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: t('Sessions', 'الجلسات'),
+                            hintText: '0',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            filled: true,
+                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                            prefixIcon: const Icon(Icons.event_available, size: 20),
+                          ),
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _setsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: t('Sets', 'المجموعات'),
+                            hintText: '3',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            filled: true,
+                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                            prefixIcon: const Icon(Icons.repeat, size: 20),
+                          ),
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _repsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: t('Reps', 'التكرارات'),
+                            hintText: '10',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            filled: true,
+                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                            prefixIcon: const Icon(Icons.fitness_center, size: 20),
+                          ),
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],

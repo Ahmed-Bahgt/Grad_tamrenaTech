@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/squat_logic.dart';
 import '../../utils/squat_processor.dart';
@@ -17,7 +19,8 @@ class SessionLiveStreamScreen extends StatefulWidget {
   const SessionLiveStreamScreen({super.key, this.onBack});
 
   @override
-  State<SessionLiveStreamScreen> createState() => _SessionLiveStreamScreenState();
+  State<SessionLiveStreamScreen> createState() =>
+      _SessionLiveStreamScreenState();
 }
 
 class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
@@ -29,14 +32,16 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   bool _calibrating = false;
   int _calibrationCounter = 0;
   List<Pose> _poses = [];
-  
+
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   PoseDetector? _poseDetector;
   late SquatProcessor _squatProcessor;
   SquatResult? _lastResult;
   String? _selectedSide; // 'left' or 'right' based on shoulder-to-foot span
-  
+  List<CameraDescription> _availableCameras = [];
+  int _currentCameraIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +52,13 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
 
   @override
   void dispose() {
-    _cameraController?.stopImageStream();
+    // Set flags to prevent further processing
+    _isProcessing = true;
+    _isStreamActive = false;
+
+    // Clean up resources synchronously
+    // Note: stopImageStream is async but we can't await in dispose
+    // The _isStreamActive flag will prevent new frames from being processed
     _cameraController?.dispose();
     _poseDetector?.close();
     super.dispose();
@@ -89,14 +100,15 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         return;
       }
 
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      _availableCameras = await availableCameras();
+      if (_availableCameras.isEmpty) {
         _showErrorDialog('No cameras available');
         return;
       }
 
+      // Initialize with first camera (usually back camera)
       _cameraController = CameraController(
-        cameras.first,
+        _availableCameras[_currentCameraIndex],
         ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
@@ -128,7 +140,7 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   }
 
   Future<void> _processImage(CameraImage image) async {
-    if (_isProcessing || _poseDetector == null) return;
+    if (_isProcessing || _poseDetector == null || !_isStreamActive) return;
     _isProcessing = true;
 
     try {
@@ -177,9 +189,12 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         // Check offset angle (posture alignment)
         if (nose != null && leftShoulder != null && rightShoulder != null) {
           final offsetAngle = _calculateOffsetAngle(
-            leftShoulder.x, leftShoulder.y,
-            rightShoulder.x, rightShoulder.y,
-            nose.x, nose.y,
+            leftShoulder.x,
+            leftShoulder.y,
+            rightShoulder.x,
+            rightShoulder.y,
+            nose.x,
+            nose.y,
           );
 
           if (offsetAngle > 50) {
@@ -219,7 +234,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         // ML Kit returns pixel coordinates; remove 0..1 bounds and rely on likelihood
         final bool noseVisible = nose != null && (nose.likelihood) > 0.5;
         final bool lVisible = leftAnkle != null && (leftAnkle.likelihood) > 0.5;
-        final bool rVisible = rightAnkle != null && (rightAnkle.likelihood) > 0.5;
+        final bool rVisible =
+            rightAnkle != null && (rightAnkle.likelihood) > 0.5;
 
         String calibMessage;
         // Only proceed if head AND at least one foot are visible
@@ -272,7 +288,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       // Process frame with squat processor (after calibration)
       final pResult = _squatProcessor.processFrame(poses.first);
       final result = _mapProcessorResult(pResult);
-      debugPrint('[SquatProcessor] correct=${result.correctReps}, incorrect=${result.incorrectReps}, feedback=${result.feedback}, kneeAngle=${result.kneeAngle.toStringAsFixed(1)}');
+      debugPrint(
+          '[SquatProcessor] correct=${result.correctReps}, incorrect=${result.incorrectReps}, feedback=${result.feedback}, kneeAngle=${result.kneeAngle.toStringAsFixed(1)}');
 
       if (mounted) {
         setState(() {
@@ -292,13 +309,25 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   }
 
   Future<void> _stopSession() async {
-    await _cameraController?.stopImageStream();
+    // Prevent further frame processing
+    _isProcessing = true;
+
+    try {
+      // Stop the image stream
+      await _cameraController?.stopImageStream();
+
+      // Small delay to ensure the last frame processing completes
+      await Future.delayed(const Duration(milliseconds: 100));
+    } catch (e) {
+      debugPrint('[SessionLiveStream] Error stopping camera: $e');
+    }
+
     if (mounted) {
       setState(() {
         _isStreamActive = false;
       });
+      _showSummaryDialog();
     }
-    _showSummaryDialog();
   }
 
   InputImage? _convertToInputImage(CameraImage image) {
@@ -354,7 +383,9 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         title: const Text('Camera Permission Required'),
         content: const Text('Enable camera access in settings.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () {
               openAppSettings();
@@ -373,7 +404,10 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Error'),
         content: Text(message),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('OK'))
+        ],
       ),
     );
   }
@@ -400,7 +434,10 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
     final leftFoot = pose.landmarks[PoseLandmarkType.leftFootIndex];
     final rightFoot = pose.landmarks[PoseLandmarkType.rightFootIndex];
 
-    if (leftShoulder != null && rightShoulder != null && leftFoot != null && rightFoot != null) {
+    if (leftShoulder != null &&
+        rightShoulder != null &&
+        leftFoot != null &&
+        rightFoot != null) {
       final leftSpan = (leftFoot.y - leftShoulder.y).abs();
       final rightSpan = (rightFoot.y - rightShoulder.y).abs();
       _selectedSide = leftSpan >= rightSpan ? 'left' : 'right';
@@ -432,7 +469,9 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
           Container(color: Colors.black),
 
         // Skeleton overlay - show when posture is aligned (selectedSide is set)
-        if (_poses.isNotEmpty && (result?.jointsDetected ?? false) && _selectedSide != null)
+        if (_poses.isNotEmpty &&
+            (result?.jointsDetected ?? false) &&
+            _selectedSide != null)
           Positioned.fill(
             child: CustomPaint(
               painter: PosePainter(
@@ -459,9 +498,11 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             children: [
               _buildBadge('CORRECT: ${result?.correctReps ?? 0}', Colors.green),
               const SizedBox(height: 8),
-              _buildBadge('INCORRECT: ${result?.incorrectReps ?? 0}', Colors.red),
+              _buildBadge(
+                  'INCORRECT: ${result?.incorrectReps ?? 0}', Colors.red),
               const SizedBox(height: 8),
-              _buildBadge('SET: ${result?.currentSet ?? 0} / $_targetSets', Colors.blue),
+              _buildBadge('SET: ${result?.currentSet ?? 0} / $_targetSets',
+                  Colors.blue),
             ],
           ),
         ),
@@ -474,7 +515,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.orange,
                   borderRadius: BorderRadius.circular(8),
@@ -515,9 +557,12 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
                         borderRadius: BorderRadius.circular(7),
                         child: FractionallySizedBox(
                           alignment: Alignment.centerLeft,
-                          widthFactor: (_calibrationCounter / 30).clamp(0.0, 1.0),
+                          widthFactor:
+                              (_calibrationCounter / 30).clamp(0.0, 1.0),
                           child: Container(
-                            color: _calibrationCounter >= 30 ? Colors.green : Colors.blue,
+                            color: _calibrationCounter >= 30
+                                ? Colors.green
+                                : Colors.blue,
                           ),
                         ),
                       ),
@@ -539,17 +584,18 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
 
         // Feedback messages at BOTTOM (LOWER YOUR HIPS, BEND FORWARD, etc.)
         if (!_calibrating &&
-          result != null &&
-          result.feedback.isNotEmpty &&
-          !result.feedback.contains('Good form') &&
-          !isWaiting)
+            result != null &&
+            result.feedback.isNotEmpty &&
+            !result.feedback.contains('Good form') &&
+            !isWaiting)
           Positioned(
             left: 0,
             right: 0,
             bottom: 100,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 decoration: BoxDecoration(
                   color: _getFeedbackColor(result.feedback),
                   borderRadius: BorderRadius.circular(12),
@@ -583,7 +629,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
               children: [
                 // Current State Indicator
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: _getStateColor(result?.currentState),
                     borderRadius: BorderRadius.circular(4),
@@ -647,6 +694,29 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             ),
           ),
 
+        // Camera toggle button (top right)
+        if (_availableCameras.length > 1)
+          Positioned(
+            top: 20,
+            right: 20,
+            child: Material(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _toggleCamera,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Icon(
+                    Icons.flip_camera_android,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
         // Start/Stop button
         Positioned(
           bottom: 20,
@@ -657,7 +727,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
               onPressed: _stopSession,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -718,12 +789,17 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   }
 
   void _showSummaryDialog() {
-    if (!mounted || _lastResult == null) return;
+    if (!mounted) return;
 
-    final totalReps = _lastResult!.correctReps + _lastResult!.incorrectReps;
+    final correctReps = _squatProcessor.totalCorrectReps;
+    final incorrectReps = _squatProcessor.totalIncorrectReps;
+    final totalReps = correctReps + incorrectReps;
     final accuracy = totalReps > 0
-        ? (_lastResult!.correctReps / totalReps * 100).toStringAsFixed(1)
+        ? (correctReps / totalReps * 100).toStringAsFixed(1)
         : '0.0';
+    
+    // Check if session was successfully completed (all sets done)
+    final sessionCompleted = _squatProcessor.sessionComplete;
 
     showDialog<void>(
       context: context,
@@ -734,22 +810,117 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Correct: ${_lastResult!.correctReps}'),
-              Text('Incorrect: ${_lastResult!.incorrectReps}'),
+              Text('Correct: $correctReps'),
+              Text('Incorrect: $incorrectReps'),
               Text('Total: $totalReps'),
               Text('Accuracy: $accuracy%'),
-              Text('Sets: ${_lastResult!.currentSet}/$_targetSets'),
+              Text(
+                  'Sets: ${(_squatProcessor.currentSet - 1).clamp(1, _targetSets)}/$_targetSets'),
+              if (sessionCompleted)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    '✅ Session Completed!',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () async {
+                // Increment completedSessions in Firestore if session was completed
+                if (sessionCompleted) {
+                  await _incrementCompletedSessions();
+                }
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
               child: const Text('OK'),
             ),
           ],
         );
       },
     );
+  }
+
+  /// Increment the completedSessions counter for the current patient in Firestore
+  Future<void> _incrementCompletedSessions() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final patientRef = FirebaseFirestore.instance.collection('patients').doc(user.uid);
+      
+      // Get current completedSessions count
+      final snapshot = await patientRef.get();
+      if (!snapshot.exists) return;
+      
+      final data = snapshot.data();
+      final currentCompleted = (data?['completedSessions'] as num?)?.toInt() ?? 0;
+      
+      // Increment by 1
+      await patientRef.update({
+        'completedSessions': currentCompleted + 1,
+        'lastSession': DateTime.now().toIso8601String(),
+      });
+      
+      debugPrint('[SessionLiveStream] Incremented completedSessions: ${currentCompleted + 1}');
+    } catch (e) {
+      debugPrint('[SessionLiveStream] Error incrementing completedSessions: $e');
+    }
+  }
+
+  /// Toggle between front and back cameras
+  Future<void> _toggleCamera() async {
+    if (_availableCameras.length < 2) {
+      _showErrorDialog('Only one camera available');
+      return;
+    }
+
+    try {
+      // Stop image stream if active
+      final wasStreamActive = _isStreamActive;
+      if (wasStreamActive) {
+        await _cameraController?.stopImageStream();
+      }
+
+      // Dispose current controller
+      await _cameraController?.dispose();
+
+      // Switch to next camera
+      _currentCameraIndex = (_currentCameraIndex + 1) % _availableCameras.length;
+
+      // Initialize new camera
+      _cameraController = CameraController(
+        _availableCameras[_currentCameraIndex],
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+
+      await _cameraController!.initialize();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isCameraInitialized = true;
+      });
+
+      // Restart image stream if it was active
+      if (wasStreamActive) {
+        await _cameraController!.startImageStream(_processImage);
+      }
+
+      debugPrint('[SessionLiveStream] Switched to camera: ${_availableCameras[_currentCameraIndex].name}');
+    } catch (e) {
+      debugPrint('[SessionLiveStream] Error switching camera: $e');
+      _showErrorDialog('Failed to switch camera: $e');
+    }
   }
 
   Widget _buildSetupView(bool isDark) {
@@ -761,26 +932,48 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF161B22) : Colors.grey[50],
-              border: Border(bottom: BorderSide(color: isDark ? Colors.white12 : Colors.grey[300]!)),
+              border: Border(
+                  bottom: BorderSide(
+                      color: isDark ? Colors.white12 : Colors.grey[300]!)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t('Workout Settings', 'إعدادات التمرين'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                Text(t('Workout Settings', 'إعدادات التمرين'),
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87)),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _modeButton('Beginner', _selectedMode == 'Beginner', () => setState(() => _selectedMode = 'Beginner'))),
+                    Expanded(
+                        child: _modeButton(
+                            'Beginner',
+                            _selectedMode == 'Beginner',
+                            () => setState(() => _selectedMode = 'Beginner'))),
                     const SizedBox(width: 12),
-                    Expanded(child: _modeButton('Pro', _selectedMode == 'Pro', () => setState(() => _selectedMode = 'Pro'))),
+                    Expanded(
+                        child: _modeButton('Pro', _selectedMode == 'Pro',
+                            () => setState(() => _selectedMode = 'Pro'))),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: _buildDropdown(t('Reps per Set', 'التكرارات'), _targetReps, 20, (v) => setState(() => _targetReps = v))),
+                    Expanded(
+                        child: _buildDropdown(
+                            t('Reps per Set', 'التكرارات'),
+                            _targetReps,
+                            20,
+                            (v) => setState(() => _targetReps = v))),
                     const SizedBox(width: 12),
-                    Expanded(child: _buildDropdown(t('Total Sets', 'المجموعات'), _targetSets, 10, (v) => setState(() => _targetSets = v))),
+                    Expanded(
+                        child: _buildDropdown(
+                            t('Total Sets', 'المجموعات'),
+                            _targetSets,
+                            10,
+                            (v) => setState(() => _targetSets = v))),
                   ],
                 ),
               ],
@@ -792,25 +985,55 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    height: 400,
-                    color: Colors.black12,
-                    child: _isCameraInitialized && _cameraController != null
-                        ? CameraPreview(_cameraController!)
-                        : Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.videocam, size: 48, color: Colors.grey[400]),
-                                const SizedBox(height: 12),
-                                Text(t('Initializing camera...', 'جاري تهيئة الكاميرا...'), style: TextStyle(color: Colors.grey[600])),
-                              ],
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        height: 400,
+                        color: Colors.black12,
+                        child: _isCameraInitialized && _cameraController != null
+                            ? CameraPreview(_cameraController!)
+                            : Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.videocam,
+                                        size: 48, color: Colors.grey[400]),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                        t('Initializing camera...',
+                                            'جاري تهيئة الكاميرا...'),
+                                        style: TextStyle(color: Colors.grey[600])),
+                                  ],
+                                ),
+                              ),
+                      ),
+                    ),
+                    // Camera toggle button
+                    if (_isCameraInitialized && _availableCameras.length > 1)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Material(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            onTap: _toggleCamera,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Icon(
+                                Icons.flip_camera_android,
+                                color: Colors.white,
+                                size: 28,
+                              ),
                             ),
                           ),
-                  ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -819,10 +1042,15 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF64B5F6),
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _isCameraInitialized ? _startSession : null,
-                    child: Text(t('Start Session', 'بدء الجلسة'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    child: Text(t('Start Session', 'بدء الجلسة'),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16)),
                   ),
                 ),
               ],
@@ -837,17 +1065,25 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF64B5F6).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF64B5F6).withOpacity(0.3)),
+                border:
+                    Border.all(color: const Color(0xFF64B5F6).withOpacity(0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t('📷 Camera Requirements', '📷 متطلبات الكاميرا'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64B5F6))),
+                  Text(t('📷 Camera Requirements', '📷 متطلبات الكاميرا'),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64B5F6))),
                   const SizedBox(height: 8),
                   Text(
                     t('• Good lighting\n• Full body visible (head to feet)\n• 2-3 meters from camera\n• Stable position',
                         '• إضاءة جيدة\n• الجسم مرئي بالكامل (من الرأس إلى القدمين)\n• 2-3 أمتار من الكاميرا\n• موضع ثابت'),
-                    style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87, height: 1.6),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        height: 1.6),
                   ),
                 ],
               ),
@@ -865,37 +1101,58 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF64B5F6) : (isDark ? const Color(0xFF1C1F26) : Colors.grey[100]),
+          color: isSelected
+              ? const Color(0xFF64B5F6)
+              : (isDark ? const Color(0xFF1C1F26) : Colors.grey[100]),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isSelected ? const Color(0xFF64B5F6) : (isDark ? Colors.white12 : Colors.grey[300]!)),
+          border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF64B5F6)
+                  : (isDark ? Colors.white12 : Colors.grey[300]!)),
         ),
-        child: Center(child: Text(label, style: TextStyle(color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black54), fontWeight: FontWeight.w600))),
+        child: Center(
+            child: Text(label,
+                style: TextStyle(
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? Colors.white70 : Colors.black54),
+                    fontWeight: FontWeight.w600))),
       ),
     );
   }
 
-  Widget _buildDropdown(String label, int value, int max, Function(int) onChanged) {
+  Widget _buildDropdown(
+      String label, int value, int max, Function(int) onChanged) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black54)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black54)),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1C1F26) : Colors.grey[100],
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
+            border:
+                Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
           ),
           child: DropdownButton<int>(
             value: value,
             isExpanded: true,
             underline: const SizedBox(),
             dropdownColor: isDark ? const Color(0xFF161B22) : Colors.white,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14),
+            style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87, fontSize: 14),
             onChanged: (v) => v != null ? onChanged(v) : null,
-            items: List.generate(max, (i) => i + 1).map((n) => DropdownMenuItem(value: n, child: Text(n.toString()))).toList(),
+            items: List.generate(max, (i) => i + 1)
+                .map((n) =>
+                    DropdownMenuItem(value: n, child: Text(n.toString())))
+                .toList(),
           ),
         ),
       ],

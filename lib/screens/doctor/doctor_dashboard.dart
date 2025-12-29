@@ -12,6 +12,8 @@
 
 import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
+import '../../utils/availability_manager.dart';
+import '../../utils/patient_manager.dart';
 import 'doctor_home_screen.dart';
 import 'doctor_availability_screen.dart';
 import 'patient_management_screen.dart';
@@ -34,6 +36,26 @@ class DoctorDashboard extends StatefulWidget {
 
 class _DoctorDashboardState extends State<DoctorDashboard> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncAllDataFromFirestore();
+  }
+
+  /// Sync all doctor data from Firestore on app startup
+  Future<void> _syncAllDataFromFirestore() async {
+    try {
+      debugPrint('[DoctorDashboard] Syncing all data from Firestore...');
+      await Future.wait([
+        AvailabilityManager().syncAllData(),
+        PatientManager().syncAllData(),
+      ]);
+      debugPrint('[DoctorDashboard] All data synced successfully');
+    } catch (e) {
+      debugPrint('[DoctorDashboard] Error syncing data: $e');
+    }
+  }
 
   void _onNavItemTapped(int index) {
     setState(() {
@@ -195,7 +217,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       ),
     );
   }
-
 
   void _showLanguageDialog(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

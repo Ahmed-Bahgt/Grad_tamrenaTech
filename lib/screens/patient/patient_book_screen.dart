@@ -15,9 +15,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
 import '../../utils/patient_bookings_manager.dart';
+import '../../utils/patient_manager.dart';
 
 class PatientBookScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -42,9 +44,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
 
   Future<void> _loadDoctorsFromFirestore() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('doctors')
-          .get();
+      final snapshot =
+          await FirebaseFirestore.instance.collection('doctors').get();
 
       final doctors = snapshot.docs.map((doc) {
         final data = doc.data();
@@ -53,7 +54,7 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
         final fullName = firstName.isNotEmpty && lastName.isNotEmpty
             ? 'Dr. $firstName $lastName'
             : data['fullName'] as String? ?? 'Dr. Unknown';
-        
+
         return DoctorInfo(
           id: doc.id,
           name: fullName,
@@ -127,7 +128,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF0D1117) : Colors.grey[50],
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
               border: Border(
                 bottom: BorderSide(
                   color: isDark ? Colors.white12 : Colors.grey[300]!,
@@ -180,73 +182,95 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
 
           // Slots List
           Expanded(
-            child: _availabilityManager.slots.isEmpty
-                ? Center(
+            child: StreamBuilder<List<AvailabilitySlot>>(
+              stream: AvailabilityManager.watchDoctorSlots(doctor.id),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: isDark
+                          ? const Color(0xFF29B6F6)
+                          : const Color(0xFF8BC34A),
+                    ),
+                  );
+                }
+                final slots = snapshot.data ?? const [];
+                if (slots.isEmpty) {
+                  return Center(
                     child: Text(
                       t('No available slots', 'لا توجد مواعيد متاحة'),
                       style: TextStyle(
                         color: isDark ? Colors.white54 : Colors.black54,
                       ),
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _availabilityManager.slots.length,
-                    itemBuilder: (itemContext, index) {
-                      final slot = _availabilityManager.slots[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF0D1117) : Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isDark ? Colors.white12 : Colors.grey[300]!,
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: slots.length,
+                  itemBuilder: (itemContext, index) {
+                    final slot = slots[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color:
+                            isDark ? const Color(0xFF0D1117) : Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? Colors.white12 : Colors.grey[300]!,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _formatDate(slot.date),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_formatTime(slot.timeFrom)} - ${_formatTime(slot.timeTo)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? Colors.white60
+                                        : Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _formatDate(slot.date),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white : Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${_formatTime(slot.timeFrom)} - ${_formatTime(slot.timeTo)}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark ? Colors.white60 : Colors.black54,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark
+                                  ? const Color(0xFF29B6F6)
+                                  : const Color(0xFF8BC34A),
                             ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF8BC34A),
-                              ),
-                              onPressed: () {
-                                // Show confirmation dialog without closing the sheet
-                                _bookAppointment(pageContext, sheetContext, doctor, slot);
-                              },
-                              child: Text(
-                                t('Book', 'احجز'),
-                                style: const TextStyle(color: Colors.white),
-                              ),
+                            onPressed: () {
+                              _bookAppointment(
+                                  pageContext, sheetContext, doctor, slot);
+                            },
+                            child: Text(
+                              t('Book', 'احجز'),
+                              style: const TextStyle(color: Colors.white),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -264,7 +288,10 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
     return '$hour:$minute $period';
   }
 
-  void _bookAppointment(BuildContext pageContext, BuildContext sheetContext, DoctorInfo doctor, AvailabilitySlot slot) {
+  void _bookAppointment(BuildContext pageContext, BuildContext sheetContext,
+      DoctorInfo doctor, AvailabilitySlot slot) {
+    final isDark = Theme.of(pageContext).brightness == Brightness.dark;
+
     showDialog(
       context: pageContext,
       builder: (dialogContext) => AlertDialog(
@@ -297,11 +324,13 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8BC34A),
+              backgroundColor:
+                  isDark ? const Color(0xFF29B6F6) : const Color(0xFF8BC34A),
             ),
             onPressed: () async {
               // Save booking data before closing any dialogs
-              final bookingDate = DateTime(slot.date.year, slot.date.month, slot.date.day);
+              final bookingDate =
+                  DateTime(slot.date.year, slot.date.month, slot.date.day);
               final bookingDateTime = bookingDate.add(Duration(
                 hours: slot.timeFrom.hour,
                 minutes: slot.timeFrom.minute,
@@ -310,33 +339,57 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
                 hours: slot.timeTo.hour,
                 minutes: slot.timeTo.minute,
               ));
-              
+
               final booking = PatientBooking(
                 id: 'booking_${DateTime.now().millisecondsSinceEpoch}',
+                doctorId: doctor.id,
                 doctorName: doctor.name,
                 specialty: doctor.specialty,
                 dateTime: bookingDateTime,
                 endTime: endDateTime,
                 doctorImage: doctor.image,
               );
-              
+
               // Close confirmation dialog first
               if (mounted) Navigator.of(dialogContext).pop();
-              
+
               // Capture navigator before async gap
               final sheetNavigator = Navigator.of(sheetContext);
-              
+
               // Wait a frame
               await Future.delayed(const Duration(milliseconds: 100));
-              
+
               // Close bottom sheet using captured navigator to avoid context across async gap
               if (mounted) sheetNavigator.pop();
-              
+
               // Save booking data
               if (mounted) {
+                final patientId = FirebaseAuth.instance.currentUser?.uid ?? '';
+                final patientDoc = await FirebaseFirestore.instance
+                    .collection('patients')
+                    .doc(patientId)
+                    .get();
+
+                final patientData = patientDoc.data();
+                final firstName = patientData?['firstName'] as String? ?? '';
+                final lastName = patientData?['lastName'] as String? ?? '';
+                final patientName = firstName.isNotEmpty && lastName.isNotEmpty
+                    ? '$firstName $lastName'
+                    : patientData?['fullName'] as String? ?? 'Patient';
+
+                // Add booking
                 PatientBookingsManager().addBooking(booking);
-                _availabilityManager.bookSlot(slot);
-                
+
+                // Remove slot from doctor's availability
+                await AvailabilityManager.removeSlotForDoctor(doctor.id, slot);
+
+                // Assign patient to doctor's care (this will remove from "All Patients" tab)
+                await PatientManager.assignPatientToDoctor(
+                    patientId, doctor.id, patientName);
+
+                debugPrint(
+                    '[PatientBook] Booking completed - Patient: $patientName, Doctor: ${doctor.name}');
+
                 // Show success dialog on next frame using stable page context
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) {
@@ -355,7 +408,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
     );
   }
 
-  void _showBookingSuccess(BuildContext context, DoctorInfo doctor, AvailabilitySlot slot) {
+  void _showBookingSuccess(
+      BuildContext context, DoctorInfo doctor, AvailabilitySlot slot) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -414,7 +468,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor:
+          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
       appBar: AppBar(
         backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
         elevation: 1,
@@ -429,6 +484,13 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: t('All Slots', 'كل المواعيد'),
+            icon: const Icon(Icons.calendar_month, color: Color(0xFF8BC34A)),
+            onPressed: () => _showAllSlots(context),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -449,7 +511,8 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: t('Search by doctor name...', 'ابحث باسم الطبيب...'),
-                hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                hintStyle:
+                    TextStyle(color: isDark ? Colors.white38 : Colors.black38),
                 prefixIcon: const Icon(Icons.search, color: Color(0xFF8BC34A)),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -516,6 +579,148 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showAllSlots(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final pageContext = context;
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0D1117) : Colors.grey[50],
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border(
+                  bottom: BorderSide(
+                      color: isDark ? Colors.white12 : Colors.grey[300]!),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    t('All Available Slots', 'كل المواعيد المتاحة'),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<List<GlobalAvailabilityItem>>(
+                stream: AvailabilityManager.watchAllSlots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF8BC34A)));
+                  }
+                  final items = snapshot.data ?? const [];
+                  if (items.isEmpty) {
+                    return Center(
+                      child: Text(
+                        t('No available slots', 'لا توجد مواعيد متاحة'),
+                        style: TextStyle(
+                            color: isDark ? Colors.white54 : Colors.black54),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final slot = item.slot;
+                      final doctor = DoctorInfo(
+                        id: item.doctorId,
+                        name: item.doctorName,
+                        specialty: item.doctorDegree,
+                        rating: 4.8,
+                        experience: '5 years',
+                        image: '👨‍⚕️',
+                      );
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF0D1117)
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color:
+                                  isDark ? Colors.white12 : Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    doctor.name,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${_formatDate(slot.date)} · ${_formatTime(slot.timeFrom)} - ${_formatTime(slot.timeTo)}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? Colors.white60
+                                          : Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark
+                                    ? const Color(0xFF29B6F6)
+                                    : const Color(0xFF8BC34A),
+                              ),
+                              onPressed: () {
+                                _bookAppointment(
+                                    pageContext, sheetContext, doctor, slot);
+                              },
+                              child: Text(t('Book', 'احجز'),
+                                  style: const TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -588,7 +793,8 @@ class _DoctorCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.star, color: Color(0xFFFFB300), size: 16),
+                      const Icon(Icons.star,
+                          color: Color(0xFFFFB300), size: 16),
                       const SizedBox(width: 4),
                       Text(
                         doctor.rating.toString(),
@@ -619,7 +825,8 @@ class _DoctorCard extends StatelessWidget {
             const SizedBox(width: 12),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF8BC34A),
+                backgroundColor:
+                    isDark ? const Color(0xFF29B6F6) : const Color(0xFF8BC34A),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
                   vertical: 10,
