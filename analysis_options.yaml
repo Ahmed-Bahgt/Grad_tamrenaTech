@@ -21,7 +21,11 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
+    avoid_print: false  # Disable to allow print() for debugging
+    deprecated_member_use: false  # Suppress deprecation warnings (withOpacity)
+    deprecated_member_use_from_same_package: false
+    use_build_context_synchronously: false  # Context usage across async gaps
+    unnecessary_brace_in_string_interps: false  # Minor formatting
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
     # Disable const-preference lints to reduce noise in large UI trees
     prefer_const_constructors: false

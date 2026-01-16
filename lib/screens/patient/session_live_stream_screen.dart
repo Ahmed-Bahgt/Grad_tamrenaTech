@@ -832,8 +832,13 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
           actions: [
             TextButton(
               onPressed: () async {
-                // Increment completedSessions in Firestore if session was completed
+                // Save session to Firestore and increment completedSessions if session was completed
                 if (sessionCompleted) {
+                  await _saveSessionToFirestore(
+                    correctReps: correctReps,
+                    incorrectReps: incorrectReps,
+                    accuracyPercentage: double.parse(accuracy),
+                  );
                   await _incrementCompletedSessions();
                 }
                 if (mounted) {
@@ -846,6 +851,71 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         );
       },
     );
+  }
+
+  /// Save completed session data to Firestore
+  /// Stores: correctReps, wrongReps, accuracyPercentage, timestamp
+  /// Location: /Patients/{patientId}/Sessions/{sessionId}
+  Future<void> _saveSessionToFirestore({
+    required int correctReps,
+    required int incorrectReps,
+    required double accuracyPercentage,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final patientId = user.uid;
+      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      final timestamp = DateTime.now();
+
+      // Save session data to /Patients/{patientId}/Sessions/{sessionId}
+      debugPrint('[SessionLiveStream] Saving session for patientId: $patientId');
+      debugPrint('[SessionLiveStream] Session Data: correct=$correctReps, wrong=$incorrectReps, accuracy=$accuracyPercentage%');
+      
+      await FirebaseFirestore.instance
+          .collection('Patients')
+          .doc(patientId)
+          .collection('Sessions')
+          .doc(sessionId)
+          .set({
+        'sessionId': sessionId,
+        'patientId': patientId,
+        'correctReps': correctReps,
+        'wrongReps': incorrectReps,
+        'totalReps': correctReps + incorrectReps,
+        'accuracyPercentage': accuracyPercentage,
+        'timestamp': timestamp.toIso8601String(),
+        'exerciseType': 'Squat', // Current exercise type
+        'sets': _squatProcessor.currentSet - 1,
+        'targetSets': _targetSets,
+        'mode': _selectedMode, // Beginner/Pro
+      });
+
+      debugPrint('[SessionLiveStream] Session saved successfully: $sessionId');
+      
+      // Show success feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Session saved successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[SessionLiveStream] Error saving session to Firestore: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to save session'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// Increment the completedSessions counter for the current patient in Firestore

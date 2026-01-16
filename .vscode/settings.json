@@ -1,4 +1,5 @@
 {
     "github.copilot.chat.virtualTools.threshold": 0,
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "cmake.sourceDirectory": "G:/Flutter/tamren_tech/linux"
 }

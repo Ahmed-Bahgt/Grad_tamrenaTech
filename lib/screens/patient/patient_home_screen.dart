@@ -506,12 +506,67 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildDoctorNotesSection(BuildContext context, bool isDark) {
-    const doctorNotes = [
-      'Continue with the current rehabilitation plan. Progress is excellent.',
-      'Focus on improving range of motion during exercises.',
-      'Schedule follow-up consultation in 2 weeks.',
-    ];
+    // Get doctor notes from patient data
+    final doctorNotes = _profileManager.patientNotes.trim();
+    
+    // If no notes from doctor, show empty state
+    if (doctorNotes.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t('Doctor\'s Notes', 'ملاحظات الطبيب'),
+            style: TextStyle(
+              fontSize: ResponsiveUtils.fontSize(context, 18),
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+          Container(
+            padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 16)),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161B22) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? Colors.white12 : Colors.grey[300]!,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.note_outlined,
+                  size: ResponsiveUtils.iconSize(context, 40),
+                  color: isDark ? Colors.white30 : Colors.grey[400],
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 12)),
+                Text(
+                  t('No notes yet', 'لا توجد ملاحظات بعد'),
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontSize: ResponsiveUtils.fontSize(context, 14),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: ResponsiveUtils.spacing(context, 6)),
+                Text(
+                  t('Your doctor will add notes here after reviewing your progress',
+                      'سيضيف طبيبك ملاحظاته هنا بعد مراجعة تقدمك'),
+                  style: TextStyle(
+                    color: isDark ? Colors.white30 : Colors.grey[500],
+                    fontSize: ResponsiveUtils.fontSize(context, 12),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
 
+    // If doctor has added notes, display them
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -533,40 +588,30 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               color: isDark ? Colors.white12 : Colors.grey[300]!,
             ),
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(
-              doctorNotes.length,
-              (index) => Padding(
-                padding: EdgeInsets.only(
-                    bottom: index < doctorNotes.length - 1 ? ResponsiveUtils.spacing(context, 12) : 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _accentColor(isDark),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    SizedBox(width: ResponsiveUtils.spacing(context, 12)),
-                    Expanded(
-                      child: Text(
-                        doctorNotes[index],
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black87,
-                          height: 1.5,
-                          fontSize: ResponsiveUtils.fontSize(context, 14),
-                        ),
-                      ),
-                    ),
-                  ],
+            children: [
+              Container(
+                margin: EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: _accentColor(isDark),
+                  shape: BoxShape.circle,
                 ),
               ),
-            ),
+              SizedBox(width: ResponsiveUtils.spacing(context, 12)),
+              Expanded(
+                child: Text(
+                  doctorNotes,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    height: 1.6,
+                    fontSize: ResponsiveUtils.fontSize(context, 14),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

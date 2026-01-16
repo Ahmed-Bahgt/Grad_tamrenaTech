@@ -143,6 +143,7 @@ class PatientBookingsManager {
           .doc(booking.id)
           .set({
         'patientId': user.uid,
+        'patientName': booking.patientName ?? 'Patient',
         'doctorId': booking.doctorId,
         'doctorName': booking.doctorName,
         'specialty': booking.specialty,
@@ -241,6 +242,7 @@ class PatientBooking {
   final DateTime endTime;
   final String doctorImage;
   final String status; // upcoming, completed, cancelled
+  String? patientName; // Added for doctor-side display
 
   PatientBooking({
     required this.id,
@@ -251,5 +253,6 @@ class PatientBooking {
     required this.endTime,
     required this.doctorImage,
     this.status = 'upcoming',
+    this.patientName,
   });
 }

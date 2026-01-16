@@ -101,6 +101,190 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return '$hour:$minute $period';
   }
 
+  Widget _buildBookedAppointmentCard(
+    BuildContext context,
+    BookedAppointment appointment,
+    bool isDark,
+  ) {
+    final dateFormat = DateFormat('EEE, MMM d');
+    final timeFormat = DateFormat('HH:mm');
+    
+    final appointmentDate = dateFormat.format(appointment.dateTime);
+    final startTime = timeFormat.format(appointment.dateTime);
+    final endTime = appointment.endTime != null 
+        ? timeFormat.format(appointment.endTime!) 
+        : '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF161B22) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.grey[300]!,
+        ),
+      ),
+      child: InkWell(
+        onTap: () {
+          _showAppointmentDetails(context, appointment, isDark);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8BC34A).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.calendar_month,
+                  color: Color(0xFF8BC34A),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      appointment.patientName ?? t('Unknown Patient', 'مريض غير معروف'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      endTime.isNotEmpty
+                          ? '$appointmentDate • $startTime - $endTime'
+                          : '$appointmentDate • $startTime',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAppointmentDetails(
+    BuildContext context,
+    BookedAppointment appointment,
+    bool isDark,
+  ) {
+    final dateFormat = DateFormat('EEEE, MMMM d, yyyy');
+    final timeFormat = DateFormat('h:mm a');
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
+        title: Text(
+          t('Appointment Details', 'تفاصيل الموعد'),
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailRow(
+                Icons.person,
+                t('Patient', 'المريض'),
+                appointment.patientName ?? t('Unknown', 'غير معروف'),
+                isDark,
+              ),
+              const SizedBox(height: 12),
+              _detailRow(
+                Icons.event,
+                t('Date', 'التاريخ'),
+                dateFormat.format(appointment.dateTime),
+                isDark,
+              ),
+              const SizedBox(height: 12),
+              _detailRow(
+                Icons.schedule,
+                t('Time', 'الوقت'),
+                appointment.endTime != null
+                    ? '${timeFormat.format(appointment.dateTime)} - ${timeFormat.format(appointment.endTime!)}'
+                    : timeFormat.format(appointment.dateTime),
+                isDark,
+              ),
+              const SizedBox(height: 12),
+              _detailRow(
+                Icons.info_outline,
+                t('Status', 'الحالة'),
+                t(appointment.status, 'قادم'),
+                isDark,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              t('Close', 'إغلاق'),
+              style: const TextStyle(color: Color(0xFF00BCD4)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value, bool isDark) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: const Color(0xFF00BCD4)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -159,6 +343,66 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     ),
                   ),
                 ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 24),
+
+          // Booked Appointments Section
+          Text(
+            t('Upcoming Appointments', 'المواعيد القادمة'),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Booked Appointments List
+          ListenableBuilder(
+            listenable: _manager,
+            builder: (context, _) {
+              final bookedAppointments = _manager.bookedAppointments
+                  .where((appointment) =>
+                      appointment.dateTime.isAfter(DateTime.now()))
+                  .toList()
+                ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+              if (bookedAppointments.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.calendar_today_outlined,
+                          size: 40,
+                          color: isDark ? Colors.white24 : Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        t('No upcoming appointments',
+                            'لا توجد مواعيد قادمة'),
+                        style: TextStyle(
+                            color:
+                                isDark ? Colors.white54 : Colors.black54),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: bookedAppointments.take(3).map((appointment) {
+                  return _buildBookedAppointmentCard(
+                    context,
+                    appointment,
+                    isDark,
+                  );
+                }).toList(),
               );
             },
           ),
@@ -394,7 +638,7 @@ class _SummaryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color),

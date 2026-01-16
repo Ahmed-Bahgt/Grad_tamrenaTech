@@ -27,6 +27,7 @@ class DatabaseService {
       'email': email,
       if (firstName != null) 'firstName': firstName,
       if (lastName != null) 'lastName': lastName,
+      'assignedDoctorId': '', // Initially no assigned doctor
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

@@ -126,6 +126,7 @@ class AvailabilityManager implements Listenable {
           doctorId: data['doctorId'] as String? ?? '',
           doctorName: data['doctorName'] as String? ?? '',
           patientId: doc.reference.parent.parent?.id ?? '',
+          patientName: data['patientName'] as String? ?? 'Patient',
           dateTime: dateTime,
           endTime: endTime,
           status: data['status'] as String? ?? 'upcoming',

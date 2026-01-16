@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/patient_manager.dart';
+import 'patient_reports_screen.dart';
 
 /// Patient Profile Screen - View and edit patient details
 class PatientProfileScreen extends StatefulWidget {
@@ -448,6 +449,40 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
           ),
 
           const SizedBox(height: 24),
+
+          // View Reports Button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PatientReportsScreen(
+                      patientId: widget.patient.id,
+                      patientName: widget.patient.name,
+                      onBack: () => Navigator.pop(context),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.assessment),
+              label: Text(
+                t('View Session Reports', 'عرض تقارير الجلسات'),
+                style: const TextStyle(fontSize: 16),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF64B5F6),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
 
           // Submit Button
           SizedBox(

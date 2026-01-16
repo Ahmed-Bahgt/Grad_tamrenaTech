@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/patient_bookings_manager.dart';
+import '../../utils/patient_profile_manager.dart';
 import 'patient_home_screen.dart';
 import 'patient_book_screen.dart';
 import 'patient_community_screen.dart';
@@ -40,6 +41,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
     try {
       debugPrint('[PatientDashboard] Syncing all data from Firestore...');
       await PatientBookingsManager().refresh();
+      // Load patient profile including notes
+      await PatientProfileManager().loadPatientProfile();
       debugPrint('[PatientDashboard] All data synced successfully');
     } catch (e) {
       debugPrint('[PatientDashboard] Error syncing data: $e');
