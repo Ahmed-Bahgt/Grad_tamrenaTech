@@ -1,18 +1,24 @@
 // =============================================================================
 // NUTRITION CHATBOT SCREEN - AI FOOD ANALYSIS
 // =============================================================================
-// Purpose: AI-powered nutrition assistant for patients
+// Purpose: AI-powered nutrition assistant with food photo analysis
 // Features:
 // - Upload food photos via camera or gallery
-// - AI calorie detection and nutritional analysis
-// - Chat interface with nutrition advice
-// - Meal tracking and recommendations
+// - Extract ingredients using Gemini Vision
+// - Get nutrition facts from Edamam API
+// - Display nutrition facts table with Daily Values
+// - Per-ingredient breakdown
+// - Chat interface with AI nutritionist
 // =============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:google_generative_ai/google_generative_ai.dart'
+    show ChatSession;
 import '../../utils/theme_provider.dart';
+import '../../services/gemini_service.dart';
+import '../../services/edamam_service.dart';
 
 class NutritionChatbotScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -26,21 +32,32 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<NutritionMessage> _messages = [];
+  final List<ChatMessage> _messages = [];
+
+  late GeminiService _geminiService;
+  late EdamamService _edamamService;
+
   bool _isAnalyzing = false;
+  ChatSession? _chatSession;
+  String? _currentIngredientsText;
 
   @override
   void initState() {
     super.initState();
+    _geminiService = GeminiService();
+    _edamamService = EdamamService();
+
     // Welcome message
-    _messages.add(NutritionMessage(
-      text: t(
-        'Hello! I\'m your nutrition assistant. Upload a photo of your meal, and I\'ll analyze its calories and nutritional content!',
-        'مرحباً! أنا مساعدك الغذائي. قم بتحميل صورة لوجبتك، وسأقوم بتحليل السعرات الحرارية والمحتوى الغذائي!',
+    _addMessage(
+      ChatMessage(
+        text: t(
+          'Hello! I\'m your nutrition assistant. Upload a photo of your meal, and I\'ll analyze its calories and nutritional content!',
+          'مرحباً! أنا مساعدك الغذائي. قم بتحميل صورة لوجبتك، وسأقوم بتحليل السعرات الحرارية والمحتوى الغذائي!',
+        ),
+        isUser: false,
+        timestamp: DateTime.now(),
       ),
-      isUser: false,
-      timestamp: DateTime.now(),
-    ));
+    );
   }
 
   @override
@@ -48,6 +65,13 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _addMessage(ChatMessage message) {
+    setState(() {
+      _messages.add(message);
+    });
+    _scrollToBottom();
   }
 
   Future<void> _pickImageFromGallery() async {
@@ -60,12 +84,21 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
       );
 
       if (image != null) {
-        _addImageMessage(image.path);
+        _addMessage(
+          ChatMessage(
+            text: t('Analyzing this meal...', 'تحليل هذه الوجبة...'),
+            isUser: true,
+            timestamp: DateTime.now(),
+            imagePath: image.path,
+          ),
+        );
+        _analyzeImage(image.path);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t('Error selecting image', 'خطأ في اختيار الصورة'))),
+        SnackBar(
+            content: Text(t('Error selecting image', 'خطأ في اختيار الصورة'))),
       );
     }
   }
@@ -80,159 +113,320 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
       );
 
       if (image != null) {
-        _addImageMessage(image.path);
+        _addMessage(
+          ChatMessage(
+            text: t('Analyzing this meal...', 'تحليل هذه الوجبة...'),
+            isUser: true,
+            timestamp: DateTime.now(),
+            imagePath: image.path,
+          ),
+        );
+        _analyzeImage(image.path);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t('Error capturing image', 'خطأ في التقاط الصورة'))),
+        SnackBar(
+            content: Text(t('Error capturing image', 'خطأ في التقاط الصورة'))),
       );
     }
   }
 
-  void _addImageMessage(String imagePath) {
-    setState(() {
-      _messages.add(NutritionMessage(
-        text: t('Analyzing this meal...', 'تحليل هذه الوجبة...'),
-        isUser: true,
-        timestamp: DateTime.now(),
-        imagePath: imagePath,
-      ));
-    });
-
-    _scrollToBottom();
-    _analyzeFood(imagePath);
-  }
-
-  Future<void> _analyzeFood(String imagePath) async {
+  Future<void> _analyzeImage(String imagePath) async {
     setState(() => _isAnalyzing = true);
 
-    // Simulate AI analysis delay
-    await Future.delayed(const Duration(seconds: 3));
+    try {
+      // Step 1: Extract ingredients using Gemini Vision
+      debugPrint('[Nutrition] 🔍 Extracting ingredients from image...');
+      final ingredientsText =
+          await _geminiService.extractIngredientsFromImageFile(File(imagePath));
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    // Mock AI analysis results
-    final analysisResult = _generateMockAnalysis();
+      debugPrint('[Nutrition] ✓ Detected ingredients: $ingredientsText');
+      _currentIngredientsText = ingredientsText;
 
-    setState(() {
-      _messages.add(NutritionMessage(
-        text: analysisResult,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-      _isAnalyzing = false;
-    });
+      // Step 2: Get nutrition facts from Edamam API
+      debugPrint('[Nutrition] 📊 Calling Edamam API...');
+      final result = await _edamamService.getNutritionFacts(ingredientsText);
 
-    _scrollToBottom();
+      if (!mounted) return;
+
+      if (result == null) {
+        throw Exception(
+            'Edamam could not parse the ingredients. Ensure quantities are included.');
+      }
+
+      debugPrint('[Nutrition] ✓ Got nutrition facts');
+
+      // Step 3: Display nutrition facts
+      final nutritionMessage = _buildNutritionFactsMessage(result);
+      _addMessage(
+        ChatMessage(
+          text: nutritionMessage,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
+      );
+
+      // Step 4: Initialize chat with nutrition context
+      _initializeChatSession(ingredientsText, result);
+
+      // Step 5: Generate initial AI assessment
+      await _generateInitialAssessment();
+
+      setState(() => _isAnalyzing = false);
+    } catch (e) {
+      debugPrint('[Nutrition] ❌ Error: $e');
+      if (!mounted) return;
+
+      setState(() => _isAnalyzing = false);
+
+      final errorMsg = e.toString();
+      String displayMessage;
+
+      // Check if it's a quota error
+      if (errorMsg.contains('quota') ||
+          errorMsg.contains('429') ||
+          errorMsg.contains('RESOURCE_EXHAUSTED')) {
+        displayMessage = t(
+          'API quota exceeded. Please wait a moment and try again with a different meal.',
+          'تم تجاوز حد API. يرجى الانتظار قليلاً والمحاولة مجدداً بوجبة مختلفة.',
+        );
+      } else if (errorMsg.contains('Network') ||
+          errorMsg.contains('connection')) {
+        displayMessage = t(
+          'Network error. Please check your internet connection.',
+          'خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت.',
+        );
+      } else {
+        displayMessage = t(
+          'Sorry, I couldn\'t analyze the meal. Please try with another image.',
+          'عذراً، لم أتمكن من تحليل الوجبة. يرجى محاولة صورة أخرى.',
+        );
+      }
+
+      _addMessage(
+        ChatMessage(
+          text: displayMessage,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
+      );
+    }
   }
 
-  String _generateMockAnalysis() {
-    final dishes = [
-      {
-        'name': t('Grilled Chicken Salad', 'سلطة دجاج مشوي'),
-        'calories': '350',
-        'protein': '42g',
-        'carbs': '15g',
-        'fats': '12g',
-        'fiber': '8g',
-      },
-      {
-        'name': t('Rice with Vegetables', 'أرز مع خضار'),
-        'calories': '420',
-        'protein': '12g',
-        'carbs': '68g',
-        'fats': '8g',
-        'fiber': '6g',
-      },
-      {
-        'name': t('Mixed Fruit Bowl', 'وعاء فواكه مشكلة'),
-        'calories': '180',
-        'protein': '2g',
-        'carbs': '45g',
-        'fats': '1g',
-        'fiber': '7g',
-      },
+  String _buildNutritionFactsMessage(NutritionResult result) {
+    final buffer = StringBuffer();
+
+    buffer.write('🍽️ ${t("Detected Ingredients", "المكونات المكتشفة")}:\n');
+    if (_currentIngredientsText != null) {
+      buffer.write('$_currentIngredientsText\n\n');
+    }
+
+    buffer.write('📊 ${t("Nutrition Facts", "الحقائق الغذائية")}:\n');
+
+    // Macronutrients with Daily Value %
+    final nutrientMap = [
+      ('ENERC_KCAL', '⚡ Calories', 'kcal'),
+      ('PROCNT', '🥩 Protein', 'g'),
+      ('CHOCDF', '🍞 Carbs', 'g'),
+      ('FAT', '🧈 Fat', 'g'),
+      ('FIBTG', '🌾 Fiber', 'g'),
+      ('NA', '🧂 Sodium', 'mg'),
     ];
 
-    final dish = dishes[DateTime.now().second % dishes.length];
+    for (final (code, emoji, unit) in nutrientMap) {
+      final nutrient = result.nutrients[code];
+      if (nutrient != null && nutrient.quantity > 0) {
+        final dv = nutrient.dailyValuePercent;
+        buffer.write(
+            '$emoji ${nutrient.label}: ${nutrient.quantity.toStringAsFixed(1)} $unit');
+        if (dv > 0) {
+          buffer.write(' (${dv.toStringAsFixed(0)}%)');
+        }
+        buffer.write('\n');
+      }
+    }
 
-    return t(
-      '🍽️ Detected: ${dish['name']}\n\n'
-      '📊 Nutritional Analysis:\n'
-      '• Calories: ${dish['calories']} kcal\n'
-      '• Protein: ${dish['protein']}\n'
-      '• Carbs: ${dish['carbs']}\n'
-      '• Fats: ${dish['fats']}\n'
-      '• Fiber: ${dish['fiber']}\n\n'
-      '💡 Recommendation: Great balanced meal! The protein content will help with muscle recovery.',
-      '🍽️ تم الكشف: ${dish['name']}\n\n'
-      '📊 التحليل الغذائي:\n'
-      '• السعرات: ${dish['calories']} سعرة\n'
-      '• البروتين: ${dish['protein']}\n'
-      '• الكربوهيدرات: ${dish['carbs']}\n'
-      '• الدهون: ${dish['fats']}\n'
-      '• الألياف: ${dish['fiber']}\n\n'
-      '💡 توصية: وجبة متوازنة رائعة! محتوى البروتين سيساعد في استعادة العضلات.',
-    );
+    // Per-ingredient breakdown
+    if (result.ingredients.isNotEmpty) {
+      buffer
+          .write('\n📈 ${t("Per-Ingredient Breakdown", "تفصيل المكونات")}:\n');
+      for (final ing in result.ingredients.take(5)) {
+        buffer.write('• ${ing.name}: ');
+        if (ing.calories > 0) {
+          buffer.write('${ing.calories.toStringAsFixed(0)} cal, ');
+        }
+        buffer.write(
+            'P:${ing.protein.toStringAsFixed(1)}g C:${ing.carbs.toStringAsFixed(1)}g F:${ing.fat.toStringAsFixed(1)}g\n');
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  void _initializeChatSession(String ingredients, NutritionResult result) {
+    final nutritionSummary = _buildNutritionSummaryForContext(result);
+
+    final systemContext =
+        '''You are a professional nutritionist and health advisor.
+
+INGREDIENTS DETECTED:
+$ingredients
+
+NUTRITION FACTS:
+$nutritionSummary
+
+USER CONTEXT:
+The user just uploaded a food photo. Use the nutrition data above to provide personalized advice.
+
+YOUR ROLE:
+1. Assess the meal's nutritional balance
+2. Highlight nutritional strengths
+3. Point out nutritional concerns
+4. Recommend improvements or alternative foods
+5. Answer detailed questions about the meal
+
+Be friendly, evidence-based, and provide actionable recommendations.''';
+
+    _chatSession = _geminiService.startChat(systemContext);
+  }
+
+  String _buildNutritionSummaryForContext(NutritionResult result) {
+    final buffer = StringBuffer();
+
+    if (result.calories != null) {
+      buffer.write('Calories: ${result.calories!.toStringAsFixed(0)} kcal\n');
+    }
+    if (result.protein != null) {
+      buffer.write('Protein: ${result.protein!.toStringAsFixed(1)}g\n');
+    }
+    if (result.carbs != null) {
+      buffer.write('Carbs: ${result.carbs!.toStringAsFixed(1)}g\n');
+    }
+    if (result.fat != null) {
+      buffer.write('Fat: ${result.fat!.toStringAsFixed(1)}g\n');
+    }
+    if (result.fiber != null) {
+      buffer.write('Fiber: ${result.fiber!.toStringAsFixed(1)}g\n');
+    }
+    if (result.sodium != null) {
+      buffer.write('Sodium: ${result.sodium!.toStringAsFixed(0)}mg\n');
+    }
+
+    return buffer.toString();
+  }
+
+  Future<void> _generateInitialAssessment() async {
+    if (_chatSession == null) return;
+
+    try {
+      debugPrint('[Nutrition] 💬 Generating initial assessment...');
+      final response = await _geminiService.sendChatMessage(
+        _chatSession!,
+        'Based on the nutrition data above, provide a brief 2-3 sentence assessment of this meal and one key recommendation.',
+      );
+
+      if (!mounted) return;
+
+      _addMessage(
+        ChatMessage(
+          text: response,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Nutrition] ❌ Error generating assessment: $e');
+    }
   }
 
   void _sendMessage() {
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isAnalyzing) return;
 
-    setState(() {
-      _messages.add(NutritionMessage(
+    _addMessage(
+      ChatMessage(
         text: text,
         isUser: true,
         timestamp: DateTime.now(),
-      ));
-      _messageController.clear();
-    });
+      ),
+    );
 
-    _scrollToBottom();
-    _generateAIResponse(text);
+    _messageController.clear();
+    _generateChatResponse(text);
   }
 
-  Future<void> _generateAIResponse(String userMessage) async {
-    await Future.delayed(const Duration(seconds: 2));
+  Future<void> _generateChatResponse(String userMessage) async {
+    setState(() => _isAnalyzing = true);
 
-    if (!mounted) return;
+    try {
+      // If no chat session, create a general nutrition chatbot
+      if (_chatSession == null) {
+        const systemContext =
+            '''You are a professional nutritionist and health advisor.
+Provide helpful, evidence-based nutrition and wellness advice.
+Be friendly, professional, and provide actionable recommendations.''';
 
-    String response = '';
-    final lowerMessage = userMessage.toLowerCase();
+        _chatSession = _geminiService.startChat(systemContext);
+      }
 
-    if (lowerMessage.contains('protein') || lowerMessage.contains('بروتين')) {
-      response = t(
-        'For muscle recovery, aim for 1.6-2.2g of protein per kg of body weight daily. Good sources include chicken, fish, eggs, and legumes.',
-        'للتعافي العضلي، استهدف 1.6-2.2 جرام بروتين لكل كيلوجرام من وزن الجسم يومياً. المصادر الجيدة تشمل الدجاج والسمك والبيض والبقوليات.',
+      debugPrint('[Nutrition] 💬 Sending: $userMessage');
+      final response = await _geminiService.sendChatMessage(
+        _chatSession!,
+        userMessage,
       );
-    } else if (lowerMessage.contains('calorie') || lowerMessage.contains('سعرات')) {
-      response = t(
-        'Daily calorie needs vary by activity level. For recovery, maintain a balanced intake with adequate protein and nutrients.',
-        'الاحتياجات اليومية من السعرات تختلف حسب مستوى النشاط. للتعافي، حافظ على تناول متوازن مع بروتين ومغذيات كافية.',
+
+      if (!mounted) return;
+
+      setState(() => _isAnalyzing = false);
+
+      _addMessage(
+        ChatMessage(
+          text: response,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
       );
-    } else if (lowerMessage.contains('water') || lowerMessage.contains('ماء')) {
-      response = t(
-        'Aim for 8-10 glasses of water daily. Proper hydration is crucial for muscle recovery and overall health.',
-        'استهدف 8-10 أكواب ماء يومياً. الترطيب المناسب ضروري للتعافي العضلي والصحة العامة.',
-      );
-    } else {
-      response = t(
-        'I can help you with meal analysis, nutrition advice, and dietary recommendations. Upload a food photo or ask me about nutrition!',
-        'يمكنني مساعدتك في تحليل الوجبات ونصائح التغذية والتوصيات الغذائية. قم بتحميل صورة طعام أو اسألني عن التغذية!',
+    } catch (e) {
+      final errorMsg = e.toString();
+      debugPrint('[Nutrition] ❌ Error: $errorMsg');
+      if (!mounted) return;
+
+      setState(() => _isAnalyzing = false);
+
+      // Check if it's a quota error
+      String displayMessage;
+      if (errorMsg.contains('quotaExceeded') ||
+          errorMsg.contains('quota') ||
+          errorMsg.contains('429') ||
+          errorMsg.contains('Quota exceeded')) {
+        displayMessage = t(
+          'API quota exceeded. Please wait a moment and try again, or upload a new meal.',
+          'تم تجاوز حد API. يرجى الانتظار قليلاً والمحاولة مجدداً، أو حمّل وجبة جديدة.',
+        );
+      } else if (errorMsg.contains('Network') ||
+          errorMsg.contains('connection')) {
+        displayMessage = t(
+          'Network error. Please check your internet connection and try again.',
+          'خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.',
+        );
+      } else {
+        displayMessage = t(
+          'Sorry, I couldn\'t generate a response. Please try again.',
+          'عذراً، لم أتمكن من إنشاء رد. يرجى المحاولة مجدداً.',
+        );
+      }
+
+      _addMessage(
+        ChatMessage(
+          text: displayMessage,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
       );
     }
-
-    setState(() {
-      _messages.add(NutritionMessage(
-        text: response,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-    });
-
-    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -252,7 +446,8 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor:
+          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
       appBar: AppBar(
         backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
         elevation: 1,
@@ -268,7 +463,8 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
                 color: const Color(0xFF8BC34A).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.restaurant_menu, color: Color(0xFF8BC34A), size: 24),
+              child: const Icon(Icons.restaurant_menu,
+                  color: Color(0xFF8BC34A), size: 24),
             ),
             const SizedBox(width: 12),
             Text(
@@ -293,7 +489,7 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
                 if (_isAnalyzing && index == _messages.length) {
                   return _buildTypingIndicator(isDark);
                 }
-                return _MessageBubble(
+                return _ChatBubble(
                   message: _messages[index],
                   isDark: isDark,
                 );
@@ -301,7 +497,7 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
             ),
           ),
 
-          // Upload actions
+          // Input area
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -315,30 +511,37 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: _captureImageWithCamera,
+                  onPressed: _isAnalyzing ? null : _captureImageWithCamera,
                   icon: const Icon(Icons.camera_alt, color: Color(0xFF8BC34A)),
                   tooltip: t('Take Photo', 'التقاط صورة'),
                 ),
                 IconButton(
-                  onPressed: _pickImageFromGallery,
-                  icon: const Icon(Icons.photo_library, color: Color(0xFF8BC34A)),
+                  onPressed: _isAnalyzing ? null : _pickImageFromGallery,
+                  icon:
+                      const Icon(Icons.photo_library, color: Color(0xFF8BC34A)),
                   tooltip: t('Gallery', 'المعرض'),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    enabled: !_isAnalyzing,
+                    style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87),
                     decoration: InputDecoration(
-                      hintText: t('Ask about nutrition...', 'اسأل عن التغذية...'),
-                      hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                      hintText:
+                          t('Ask about nutrition...', 'اسأل عن التغذية...'),
+                      hintStyle: TextStyle(
+                          color: isDark ? Colors.white38 : Colors.black38),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      fillColor:
+                          isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),
@@ -352,7 +555,7 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: IconButton(
-                    onPressed: _sendMessage,
+                    onPressed: _isAnalyzing ? null : _sendMessage,
                     icon: const Icon(Icons.send, color: Colors.white),
                   ),
                 ),
@@ -374,7 +577,8 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
           CircleAvatar(
             radius: 16,
             backgroundColor: const Color(0xFF8BC34A).withValues(alpha: 0.2),
-            child: const Icon(Icons.restaurant_menu, color: Color(0xFF8BC34A), size: 18),
+            child: const Icon(Icons.restaurant_menu,
+                color: Color(0xFF8BC34A), size: 18),
           ),
           const SizedBox(width: 8),
           Container(
@@ -399,31 +603,35 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  final NutritionMessage message;
+class _ChatBubble extends StatelessWidget {
+  final ChatMessage message;
   final bool isDark;
 
-  const _MessageBubble({required this.message, required this.isDark});
+  const _ChatBubble({required this.message, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!message.isUser) ...[
             CircleAvatar(
               radius: 16,
               backgroundColor: const Color(0xFF8BC34A).withValues(alpha: 0.2),
-              child: const Icon(Icons.restaurant_menu, color: Color(0xFF8BC34A), size: 18),
+              child: const Icon(Icons.restaurant_menu,
+                  color: Color(0xFF8BC34A), size: 18),
             ),
             const SizedBox(width: 8),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: message.isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -474,7 +682,8 @@ class _MessageBubble extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: const Color(0xFF8BC34A).withValues(alpha: 0.2),
-              child: const Icon(Icons.person, color: Color(0xFF8BC34A), size: 18),
+              child:
+                  const Icon(Icons.person, color: Color(0xFF8BC34A), size: 18),
             ),
           ],
         ],
@@ -483,7 +692,8 @@ class _MessageBubble extends StatelessWidget {
   }
 
   String _formatTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    final hour =
+        time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final period = time.hour >= 12 ? 'PM' : 'AM';
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';
@@ -498,7 +708,8 @@ class _TypingDot extends StatefulWidget {
   State<_TypingDot> createState() => _TypingDotState();
 }
 
-class _TypingDotState extends State<_TypingDot> with SingleTickerProviderStateMixin {
+class _TypingDotState extends State<_TypingDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -540,13 +751,13 @@ class _TypingDotState extends State<_TypingDot> with SingleTickerProviderStateMi
   }
 }
 
-class NutritionMessage {
+class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
   final String? imagePath;
 
-  NutritionMessage({
+  ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,

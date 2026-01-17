@@ -25,6 +25,8 @@ dependencies:
   firebase_storage: ^12.3.2
   http: ^1.2.1
   image: ^4.0.17
+  google_generative_ai: ^0.4.3
+  crypto: ^3.0.0
 
 dev_dependencies:
   flutter_test:

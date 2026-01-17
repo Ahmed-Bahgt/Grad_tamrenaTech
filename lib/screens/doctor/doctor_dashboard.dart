@@ -69,7 +69,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
           onBack: widget.onBackToWelcome, onNavigateToTab: _onNavItemTapped),
       SetAvailabilityScreen(onBack: widget.onBackToWelcome),
       PatientManagementScreen(onBack: widget.onBackToWelcome),
-      MedicalChatbotScreen(onBack: widget.onBackToWelcome),
+      DoctorChatScreen(
+        patientId: '',
+        patientName: 'Patient',
+      ),
       XrayComingSoonScreen(onBack: widget.onBackToWelcome),
     ];
   }
@@ -213,7 +216,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
             icon: Icon(Icons.camera_alt_outlined),
             label: 'X-Ray',
           ),
-
         ],
       ),
     );

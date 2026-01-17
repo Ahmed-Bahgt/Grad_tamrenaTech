@@ -4,8 +4,8 @@ import '../../utils/patient_bookings_manager.dart';
 import '../../utils/patient_profile_manager.dart';
 import 'patient_home_screen.dart';
 import 'patient_book_screen.dart';
-import 'patient_community_screen.dart';
 import 'nutrition_chatbot_screen.dart';
+import 'nutrition_screen.dart';
 // Squat live stream now accessed via dedicated page; dashboard has no extra FAB
 
 /// Patient Dashboard - Main navigation hub with tab-based navigation
@@ -107,7 +107,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
             onBack: widget.onBackToWelcome,
           ),
           PatientBookScreen(onBack: widget.onBackToWelcome),
-          PatientCommunityScreen(onBack: widget.onBackToWelcome),
+          NutritionScreen(onBack: widget.onBackToWelcome),
           NutritionChatbotScreen(onBack: widget.onBackToWelcome),
         ],
       ),
@@ -128,12 +128,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
             label: t('Book', 'حجز'),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.people),
-            label: t('Community', 'المجتمع'),
+            icon: const Icon(Icons.restaurant_menu),
+            label: t('Analysis', 'التحليل'),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.restaurant_menu),
-            label: t('Nutrition', 'التغذية'),
+            icon: const Icon(Icons.chat),
+            label: t('Chat', 'الدردشة'),
           ),
         ],
       ),

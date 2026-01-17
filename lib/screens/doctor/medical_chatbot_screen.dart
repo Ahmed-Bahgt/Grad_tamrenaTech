@@ -1,221 +1,133 @@
-// =============================================================================
-// MEDICAL CHATBOT SCREEN - AI MEDICAL ASSISTANT
-// =============================================================================
-// Purpose: Interactive AI chatbot for medical queries and assistance
-// Features:
-// - Real-time chat interface with message bubbles
-// - Camera button - Take photos directly for analysis
-// - Gallery button - Upload images from device
-// - AI responses for: Pain management, rehab protocols, exercises
-// - Typing indicator with animated dots
-// - Message history with timestamps
-// - Image upload and simulated AI image analysis
-// AI Capabilities:
-// - Contextual medical responses based on keywords
-// - Visual analysis of uploaded medical images
-// - Treatment protocol recommendations
-// =============================================================================
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
-import '../../widgets/custom_app_bar.dart';
-import '../../utils/theme_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import '../../services/gemini_service.dart';
 
-/// Medical Chatbot Screen for Doctor
-class MedicalChatbotScreen extends StatefulWidget {
-  final VoidCallback? onBack;
-  const MedicalChatbotScreen({super.key, this.onBack});
+class DoctorChatScreen extends StatefulWidget {
+  final String patientId;
+  final String patientName;
+
+  const DoctorChatScreen({
+    required this.patientId,
+    required this.patientName,
+    Key? key,
+  }) : super(key: key);
 
   @override
-  State<MedicalChatbotScreen> createState() => _MedicalChatbotScreenState();
+  State<DoctorChatScreen> createState() => _DoctorChatScreenState();
 }
 
-class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
+class _DoctorChatScreenState extends State<DoctorChatScreen> {
+  late GeminiService _geminiService;
+  late ChatSession _chatSession;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
-  final ImagePicker _picker = ImagePicker();
-  bool _isTyping = false;
+
+  String? _patientAge;
+  String? _patientSymptoms;
+  String? _patientHistory;
+  bool _isPatientInfoComplete = false;
+  bool _isLoading = false;
+  bool _showPatientForm = true;
 
   @override
   void initState() {
     super.initState();
-    // Welcome message
-    _messages.add(ChatMessage(
-      text: t(
-        'Hello Doctor! I\'m your medical AI assistant. How can I help you today?',
-        'مرحباً دكتور! أنا مساعدك الطبي الذكي. كيف يمكنني مساعدتك اليوم؟',
-      ),
-      isUser: false,
-      timestamp: DateTime.now(),
-    ));
+    _geminiService = GeminiService();
+    _initializeChat();
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  void _initializeChat() {
+    final systemContext = '''You are a clinical decision support AI for physicians.
+You provide evidence-based medical guidance for doctors treating patients.
+Always be precise, clinical, and reference medical best practices.
+Format responses with clear sections for diagnoses, investigations, and next steps.''';
+
+    _chatSession = _geminiService.startChat(systemContext);
   }
 
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+  void _submitPatientInfo() {
+    if ((_patientAge?.isEmpty ?? true) ||
+        (_patientSymptoms?.isEmpty ?? true) ||
+        (_patientHistory?.isEmpty ?? true)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill all patient information'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
-      _messageController.clear();
-      _isTyping = true;
+      _isPatientInfoComplete = true;
+      _showPatientForm = false;
     });
 
+    _addMessage(
+      'System',
+      'Patient info recorded:\n✓ Age: $_patientAge\n✓ Symptoms: $_patientSymptoms\n✓ History: $_patientHistory',
+      isSystem: true,
+    );
+  }
+
+  Future<void> _sendMessage() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty || _isLoading) return;
+
+    _messageController.clear();
+    _addMessage('Doctor', message);
+
+    setState(() => _isLoading = true);
+
+    try {
+      final prompt = '''PATIENT CONTEXT:
+Age: ${_patientAge ?? 'Not specified'}
+Symptoms: ${_patientSymptoms ?? 'Not specified'}
+Medical History: ${_patientHistory ?? 'Not specified'}
+
+Doctor's Clinical Question: $message
+
+Respond with:
+1. TOP 3 DIFFERENTIAL DIAGNOSES (with brief rationale)
+2. KEY INVESTIGATIONS TO ORDER
+3. RED FLAGS TO WATCH
+4. RECOMMENDED NEXT STEPS''';
+
+      final response = await _geminiService.sendChatMessage(
+        _chatSession,
+        prompt,
+      );
+
+      _addMessage('AI Assistant', response);
+      _scrollToBottom();
+    } catch (e) {
+      _addMessage('Error', '❌ Failed to get response: ${e.toString()}',
+          isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _addMessage(
+    String sender,
+    String text, {
+    bool isSystem = false,
+    bool isError = false,
+  }) {
+    setState(() {
+      _messages.add(
+        ChatMessage(
+          sender: sender,
+          text: text,
+          timestamp: DateTime.now(),
+          isSystem: isSystem,
+          isError: isError,
+        ),
+      );
+    });
     _scrollToBottom();
-
-    // Simulate AI response
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _messages.add(ChatMessage(
-            text: _generateResponse(text),
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
-          _isTyping = false;
-        });
-        _scrollToBottom();
-      }
-    });
-  }
-
-  String _generateResponse(String userMessage) {
-    final lowerMessage = userMessage.toLowerCase();
-    if (lowerMessage.contains('pain') || lowerMessage.contains('ألم')) {
-      return t(
-        'For pain management, consider: 1) Rest and ice therapy, 2) Anti-inflammatory medication if appropriate, 3) Gentle stretching exercises. Would you like more specific guidance?',
-        'لإدارة الألم، ضع في اعتبارك: 1) الراحة والعلاج بالثلج، 2) الأدوية المضادة للالتهابات إذا كانت مناسبة، 3) تمارين التمدد اللطيفة. هل تريد إرشادات أكثر تحديداً؟',
-      );
-    } else if (lowerMessage.contains('rehab') ||
-        lowerMessage.contains('تأهيل')) {
-      return t(
-        'Rehabilitation protocols typically involve: Progressive loading, Range of motion exercises, Strength training, and Functional movement patterns. What specific area are you treating?',
-        'بروتوكولات إعادة التأهيل تتضمن عادةً: التحميل التدريجي، تمارين نطاق الحركة، تدريب القوة، وأنماط الحركة الوظيفية. ما هي المنطقة المحددة التي تعالجها؟',
-      );
-    } else if (lowerMessage.contains('exercise') ||
-        lowerMessage.contains('تمرين')) {
-      return t(
-        'I can help recommend exercises based on the condition. For best results, consider: Patient\'s current mobility, Pain levels, Treatment goals, and Stage of recovery. What\'s the primary concern?',
-        'يمكنني المساعدة في التوصية بالتمارين بناءً على الحالة. للحصول على أفضل النتائج، ضع في اعتبارك: الحركة الحالية للمريض، مستويات الألم، أهداف العلاج، ومرحلة التعافي. ما هو القلق الأساسي؟',
-      );
-    } else {
-      return t(
-        'I understand. As a medical AI assistant, I can help with treatment protocols, exercise recommendations, rehabilitation plans, and medical queries. How can I assist you further?',
-        'أفهم ذلك. كمساعد طبي ذكي، يمكنني المساعدة في بروتوكولات العلاج، توصيات التمارين، خطط إعادة التأهيل، والاستفسارات الطبية. كيف يمكنني مساعدتك أكثر؟',
-      );
-    }
-  }
-
-  Future<void> _pickImageFromCamera() async {
-    try {
-      final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
-      );
-
-      if (photo != null) {
-        setState(() {
-          _messages.add(ChatMessage(
-            text: t('Sent an image', 'تم إرسال صورة'),
-            isUser: true,
-            timestamp: DateTime.now(),
-            imagePath: photo.path,
-          ));
-          _isTyping = true;
-        });
-
-        _scrollToBottom();
-
-        // Simulate AI analyzing the image
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) {
-            setState(() {
-              _messages.add(ChatMessage(
-                text: t(
-                  'I\'ve analyzed the image. It appears to show a clinical presentation. Please provide more context about what you\'d like me to evaluate.',
-                  'لقد قمت بتحليل الصورة. يبدو أنها تُظهر عرضاً سريرياً. يرجى تقديم مزيد من السياق حول ما تريد مني تقييمه.',
-                ),
-                isUser: false,
-                timestamp: DateTime.now(),
-              ));
-              _isTyping = false;
-            });
-            _scrollToBottom();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(t('Failed to take photo', 'فشل التقاط الصورة'))),
-        );
-      }
-    }
-  }
-
-  Future<void> _pickImageFromGallery() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
-      );
-
-      if (image != null) {
-        setState(() {
-          _messages.add(ChatMessage(
-            text: t('Sent an image', 'تم إرسال صورة'),
-            isUser: true,
-            timestamp: DateTime.now(),
-            imagePath: image.path,
-          ));
-          _isTyping = true;
-        });
-
-        _scrollToBottom();
-
-        // Simulate AI analyzing the image
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) {
-            setState(() {
-              _messages.add(ChatMessage(
-                text: t(
-                  'Image received and analyzed. Based on the visual information, I can provide insights. What specific aspect would you like me to focus on?',
-                  'تم استلام الصورة وتحليلها. بناءً على المعلومات البصرية، يمكنني تقديم رؤى. ما هو الجانب المحدد الذي تريد مني التركيز عليه؟',
-                ),
-                isUser: false,
-                timestamp: DateTime.now(),
-              ));
-              _isTyping = false;
-            });
-            _scrollToBottom();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(t('Failed to pick image', 'فشل اختيار الصورة'))),
-        );
-      }
-    }
   }
 
   void _scrollToBottom() {
@@ -232,282 +144,323 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      appBar: CustomAppBar(
-        title: t('Medical Chatbot', 'الدردشة الطبية'),
-        onBack: widget.onBack,
-      ),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
-      body: Column(
-        children: [
-          // Messages List
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _MessageBubble(message: message, isDark: isDark);
-              },
-            ),
-          ),
-
-          // Typing Indicator
-          if (_isTyping)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+      appBar: _showPatientForm
+          ? AppBar(
+              title: const Text('Patient Information'),
+              elevation: 0,
+              backgroundColor: Colors.blue.shade700,
+              automaticallyImplyLeading: false,
+            )
+          : AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color:
-                          isDark ? const Color(0xFF161B22) : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TypingDot(delay: 0),
-                        const SizedBox(width: 4),
-                        _TypingDot(delay: 200),
-                        const SizedBox(width: 4),
-                        _TypingDot(delay: 400),
-                      ],
-                    ),
+                  const Text('Medical AI Assistant'),
+                  Text(
+                    'Patient: ${widget.patientName} | Age: $_patientAge',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white70,
+                        ),
                   ),
                 ],
               ),
+              elevation: 0,
+              backgroundColor: Colors.blue.shade700,
             ),
+      body: Column(
+        children: [
+          if (_showPatientForm) _buildPatientInfoForm(),
+          Expanded(
+            child: _messages.isEmpty && _isPatientInfoComplete
+                ? _buildEmptyState()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) =>
+                        _buildMessageBubble(_messages[index]),
+                  ),
+          ),
+          if (_isPatientInfoComplete) _buildInputArea(),
+        ],
+      ),
+    );
+  }
 
-          // Input Area
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: isDark ? Colors.white12 : Colors.grey[300]!,
+  Widget _buildPatientInfoForm() {
+    return Container(
+      color: Colors.blue.shade50,
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            const Text(
+              'Enter Patient Details',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Patient Age',
+                hintText: 'e.g., 45',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                prefixIcon: const Icon(Icons.calendar_today),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              onChanged: (value) => _patientAge = value,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Symptoms',
+                hintText: 'e.g., Fever, cough, chest pain',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                prefixIcon: const Icon(Icons.medical_services),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              maxLines: 2,
+              onChanged: (value) => _patientSymptoms = value,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Medical History',
+                hintText: 'e.g., Diabetes, Hypertension',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                prefixIcon: const Icon(Icons.history),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              maxLines: 2,
+              onChanged: (value) => _patientHistory = value,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _submitPatientInfo,
+                icon: const Icon(Icons.check_circle),
+                label: const Text('Start Consultation'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Colors.blue.shade700,
                 ),
               ),
             ),
-            child: Row(
-              children: [
-                // Camera Button
-                IconButton(
-                  onPressed: _pickImageFromCamera,
-                  icon: const Icon(Icons.camera_alt, color: Color(0xFF00BCD4)),
-                  tooltip: t('Take Photo', 'التقاط صورة'),
-                ),
-                // Gallery Button
-                IconButton(
-                  onPressed: _pickImageFromGallery,
-                  icon: const Icon(Icons.photo, color: Color(0xFF00BCD4)),
-                  tooltip: t('Upload Image', 'رفع صورة'),
-                ),
-                const SizedBox(width: 8),
-                // Text Input
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: t('Type a message...', 'اكتب رسالة...'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor:
-                          isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Send Button
-                Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF00BCD4), Color(0xFF0097A7)],
-                    ),
-                  ),
-                  child: IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    tooltip: t('Send', 'إرسال'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  final ChatMessage message;
-  final bool isDark;
-
-  const _MessageBubble({required this.message, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment:
-            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!message.isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF00BCD4).withValues(alpha: 0.2),
-              child: const Icon(Icons.smart_toy,
-                  color: Color(0xFF00BCD4), size: 18),
-            ),
-            const SizedBox(width: 8),
           ],
-          Flexible(
-            child: Column(
-              crossAxisAlignment: message.isUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: message.isUser
-                        ? const Color(0xFF00BCD4)
-                        : (isDark ? const Color(0xFF161B22) : Colors.grey[200]),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (message.imagePath != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(message.imagePath!),
-                            width: 200,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      Text(
-                        message.text,
-                        style: TextStyle(
-                          color: message.isUser
-                              ? Colors.white
-                              : (isDark ? Colors.white : Colors.black87),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatTime(message.timestamp),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? Colors.white38 : Colors.black38,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (message.isUser) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF00BCD4).withValues(alpha: 0.2),
-              child:
-                  const Icon(Icons.person, color: Color(0xFF00BCD4), size: 18),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : time.hour;
-    final period = time.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:${time.minute.toString().padLeft(2, '0')} $period';
-  }
-}
-
-class _TypingDot extends StatefulWidget {
-  final int delay;
-  const _TypingDot({required this.delay});
-
-  @override
-  State<_TypingDot> createState() => _TypingDotState();
-}
-
-class _TypingDotState extends State<_TypingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) _controller.repeat(reverse: true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _controller,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: const BoxDecoration(
-          color: Color(0xFF00BCD4),
-          shape: BoxShape.circle,
         ),
       ),
     );
   }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat, size: 64, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            'No messages yet',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start asking clinical questions',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage message) {
+    final isDoctor = message.sender == 'Doctor';
+    final isSystem = message.isSystem;
+    final isError = message.isError;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Align(
+        alignment: isDoctor ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.85,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSystem
+                ? Colors.grey.shade100
+                : isError
+                    ? Colors.red.shade100
+                    : isDoctor
+                        ? Colors.blue.shade500
+                        : Colors.green.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: isError
+                ? Border.all(color: Colors.red.shade300)
+                : isSystem
+                    ? Border.all(color: Colors.grey.shade300)
+                    : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message.sender,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isError
+                      ? Colors.red.shade700
+                      : isSystem
+                          ? Colors.grey.shade600
+                          : isDoctor
+                              ? Colors.white
+                              : Colors.green.shade700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                message.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isError
+                      ? Colors.red.shade800
+                      : isSystem
+                          ? Colors.grey.shade700
+                          : isDoctor
+                              ? Colors.white
+                              : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                DateFormat('HH:mm').format(message.timestamp),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isError
+                      ? Colors.red.shade600
+                      : isSystem
+                          ? Colors.grey.shade500
+                          : isDoctor
+                              ? Colors.white70
+                              : Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        8 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: InputDecoration(
+                hintText: 'Ask clinical questions...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                suffixIcon: _isLoading
+                    ? Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.blue.shade700,
+                            ),
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              enabled: !_isLoading,
+              maxLines: null,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _sendMessage(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FloatingActionButton(
+            onPressed: _isLoading ? null : _sendMessage,
+            mini: true,
+            backgroundColor: Colors.blue.shade700,
+            disabledElevation: 0,
+            tooltip: 'Send message',
+            child: _isLoading
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.white,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.send),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 }
 
 class ChatMessage {
+  final String sender;
   final String text;
-  final bool isUser;
   final DateTime timestamp;
-  final String? imagePath;
+  final bool isSystem;
+  final bool isError;
 
   ChatMessage({
+    required this.sender,
     required this.text,
-    required this.isUser,
     required this.timestamp,
-    this.imagePath,
+    this.isSystem = false,
+    this.isError = false,
   });
 }
