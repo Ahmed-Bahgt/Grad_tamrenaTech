@@ -1,466 +1,202 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
-import '../../services/gemini_service.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:http/http.dart' as http;
 
-class DoctorChatScreen extends StatefulWidget {
-  final String patientId;
-  final String patientName;
-
-  const DoctorChatScreen({
-    required this.patientId,
-    required this.patientName,
-    Key? key,
-  }) : super(key: key);
+class MedicalChatbotScreen extends StatefulWidget {
+  const MedicalChatbotScreen({super.key});
 
   @override
-  State<DoctorChatScreen> createState() => _DoctorChatScreenState();
+  State<MedicalChatbotScreen> createState() => _MedicalChatbotScreenState();
 }
 
-class _DoctorChatScreenState extends State<DoctorChatScreen> {
-  late GeminiService _geminiService;
-  late ChatSession _chatSession;
-  final TextEditingController _messageController = TextEditingController();
+class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
+  static const String _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  static const String _apiKey = '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';
+  static const String _model = 'llama-3.3-70b-versatile'; // موديل أقوى وأحدث
+
+  final TextEditingController _ageController = TextEditingController();
+  final TextEditingController _symptomsController = TextEditingController();
+  final TextEditingController _historyController = TextEditingController();
+  final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [];
 
-  String? _patientAge;
-  String? _patientSymptoms;
-  String? _patientHistory;
-  bool _isPatientInfoComplete = false;
   bool _isLoading = false;
-  bool _showPatientForm = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _geminiService = GeminiService();
-    _initializeChat();
-  }
-
-  void _initializeChat() {
-    final systemContext = '''You are a clinical decision support AI for physicians.
-You provide evidence-based medical guidance for doctors treating patients.
-Always be precise, clinical, and reference medical best practices.
-Format responses with clear sections for diagnoses, investigations, and next steps.''';
-
-    _chatSession = _geminiService.startChat(systemContext);
-  }
-
-  void _submitPatientInfo() {
-    if ((_patientAge?.isEmpty ?? true) ||
-        (_patientSymptoms?.isEmpty ?? true) ||
-        (_patientHistory?.isEmpty ?? true)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all patient information'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
+  
+  // قائمة لتخزين تاريخ المحادثة بالكامل
+  List<Map<String, String>> _messages = [
+    {
+      'role': 'system',
+      'content': 'You are a professional medical assistant specialized in physiotherapy. Provide structured analysis for patients.'
     }
+  ];
 
+  // دالة لبدء محادثة جديدة لمريض جديد
+  void _startNewChat() {
     setState(() {
-      _isPatientInfoComplete = true;
-      _showPatientForm = false;
+      _messages = [
+        {'role': 'system', 'content': 'You are a professional medical assistant.'}
+      ];
+      _ageController.clear();
+      _symptomsController.clear();
+      _historyController.clear();
+      _chatController.clear();
     });
-
-    _addMessage(
-      'System',
-      'Patient info recorded:\n✓ Age: $_patientAge\n✓ Symptoms: $_patientSymptoms\n✓ History: $_patientHistory',
-      isSystem: true,
-    );
   }
 
   Future<void> _sendMessage() async {
-    final message = _messageController.text.trim();
-    if (message.isEmpty || _isLoading) return;
+    if (_chatController.text.trim().isEmpty && _messages.length > 1) return;
+    
+    setState(() {
+      _isLoading = true;
+      // إذا كانت أول رسالة، ندمج بيانات المريض
+      if (_messages.length == 1) {
+        String initialData = "Age: ${_ageController.text}, Symptoms: ${_symptomsController.text}, History: ${_historyController.text}. Question: ${_chatController.text}";
+        _messages.add({'role': 'user', 'content': initialData});
+      } else {
+        _messages.add({'role': 'user', 'content': _chatController.text});
+      }
+    });
 
-    _messageController.clear();
-    _addMessage('Doctor', message);
-
-    setState(() => _isLoading = true);
+    _chatController.clear();
+    _scrollToBottom();
 
     try {
-      final prompt = '''PATIENT CONTEXT:
-Age: ${_patientAge ?? 'Not specified'}
-Symptoms: ${_patientSymptoms ?? 'Not specified'}
-Medical History: ${_patientHistory ?? 'Not specified'}
-
-Doctor's Clinical Question: $message
-
-Respond with:
-1. TOP 3 DIFFERENTIAL DIAGNOSES (with brief rationale)
-2. KEY INVESTIGATIONS TO ORDER
-3. RED FLAGS TO WATCH
-4. RECOMMENDED NEXT STEPS''';
-
-      final response = await _geminiService.sendChatMessage(
-        _chatSession,
-        prompt,
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: {'Authorization': 'Bearer $_apiKey', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'model': _model,
+          'messages': _messages, // إرسال التاريخ بالكامل للموديل ليتذكر السياق
+          'temperature': 0.7,
+        }),
       );
 
-      _addMessage('AI Assistant', response);
-      _scrollToBottom();
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        setState(() {
+          _messages.add({
+            'role': 'assistant',
+            'content': decoded['choices'][0]['message']['content']
+          });
+        });
+      } else {
+        _showSnackBar('Error: ${response.statusCode}');
+      }
     } catch (e) {
-      _addMessage('Error', '❌ Failed to get response: ${e.toString()}',
-          isError: true);
+      _showSnackBar('Connection Error: $e');
     } finally {
       setState(() => _isLoading = false);
+      _scrollToBottom();
     }
   }
 
-  void _addMessage(
-    String sender,
-    String text, {
-    bool isSystem = false,
-    bool isError = false,
-  }) {
-    setState(() {
-      _messages.add(
-        ChatMessage(
-          sender: sender,
-          text: text,
-          timestamp: DateTime.now(),
-          isSystem: isSystem,
-          isError: isError,
-        ),
-      );
-    });
-    _scrollToBottom();
-  }
-
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        _scrollController.animateTo(_scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
+  }
+
+  void _showSnackBar(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _showPatientForm
-          ? AppBar(
-              title: const Text('Patient Information'),
-              elevation: 0,
-              backgroundColor: Colors.blue.shade700,
-              automaticallyImplyLeading: false,
-            )
-          : AppBar(
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Medical AI Assistant'),
-                  Text(
-                    'Patient: ${widget.patientName} | Age: $_patientAge',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white70,
-                        ),
-                  ),
-                ],
-              ),
-              elevation: 0,
-              backgroundColor: Colors.blue.shade700,
-            ),
-      body: Column(
-        children: [
-          if (_showPatientForm) _buildPatientInfoForm(),
-          Expanded(
-            child: _messages.isEmpty && _isPatientInfoComplete
-                ? _buildEmptyState()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) =>
-                        _buildMessageBubble(_messages[index]),
-                  ),
-          ),
-          if (_isPatientInfoComplete) _buildInputArea(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPatientInfoForm() {
-    return Container(
-      color: Colors.blue.shade50,
-      padding: const EdgeInsets.all(16),
-      child: SingleChildScrollView(
+      appBar: AppBar(title: const Text('AI Medical Assistant'), backgroundColor: const Color(0xFF102027), foregroundColor: Colors.white),
+      
+      // القائمة الجانبية (Drawer)
+      drawer: Drawer(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
-            const Text(
-              'Enter Patient Details',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Color(0xFF102027)),
+              child: Center(child: Text('Chat History', style: TextStyle(color: Colors.white, fontSize: 20))),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Patient Age',
-                hintText: 'e.g., 45',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixIcon: const Icon(Icons.calendar_today),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              onChanged: (value) => _patientAge = value,
-              keyboardType: TextInputType.number,
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('New Patient Chat'),
+              onTap: () {
+                _startNewChat();
+                Navigator.pop(context);
+              },
             ),
-            const SizedBox(height: 12),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Symptoms',
-                hintText: 'e.g., Fever, cough, chest pain',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixIcon: const Icon(Icons.medical_services),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              maxLines: 2,
-              onChanged: (value) => _patientSymptoms = value,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Medical History',
-                hintText: 'e.g., Diabetes, Hypertension',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixIcon: const Icon(Icons.history),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              maxLines: 2,
-              onChanged: (value) => _patientHistory = value,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _submitPatientInfo,
-                icon: const Icon(Icons.check_circle),
-                label: const Text('Start Consultation'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: Colors.blue.shade700,
-                ),
-              ),
-            ),
+            const Divider(),
+            // هنا يمكن إضافة قائمة بالشاتات المحفوظة لاحقاً
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      
+      body: Column(
         children: [
-          Icon(Icons.chat, size: 64, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          Text(
-            'No messages yet',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Start asking clinical questions',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(ChatMessage message) {
-    final isDoctor = message.sender == 'Doctor';
-    final isSystem = message.isSystem;
-    final isError = message.isError;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Align(
-        alignment: isDoctor ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.85,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: isSystem
-                ? Colors.grey.shade100
-                : isError
-                    ? Colors.red.shade100
-                    : isDoctor
-                        ? Colors.blue.shade500
-                        : Colors.green.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: isError
-                ? Border.all(color: Colors.red.shade300)
-                : isSystem
-                    ? Border.all(color: Colors.grey.shade300)
-                    : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                message.sender,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isError
-                      ? Colors.red.shade700
-                      : isSystem
-                          ? Colors.grey.shade600
-                          : isDoctor
-                              ? Colors.white
-                              : Colors.green.shade700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isError
-                      ? Colors.red.shade800
-                      : isSystem
-                          ? Colors.grey.shade700
-                          : isDoctor
-                              ? Colors.white
-                              : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                DateFormat('HH:mm').format(message.timestamp),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isError
-                      ? Colors.red.shade600
-                      : isSystem
-                          ? Colors.grey.shade500
-                          : isDoctor
-                              ? Colors.white70
-                              : Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputArea() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        8 + MediaQuery.of(context).viewInsets.bottom,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade300)),
-      ),
-      child: Row(
-        children: [
+          // منطقة عرض الرسائل (Chat UI)
           Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                hintText: 'Ask clinical questions...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                suffixIcon: _isLoading
-                    ? Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.blue.shade700,
-                            ),
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              enabled: !_isLoading,
-              maxLines: null,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendMessage(),
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(15),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                if (_messages[index]['role'] == 'system') return const SizedBox.shrink();
+                bool isUser = _messages[index]['role'] == 'user';
+                return Align(
+                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 5),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isUser ? Colors.teal[100] : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: MarkdownBody(data: _messages[index]['content']!),
+                  ),
+                );
+              },
             ),
           ),
-          const SizedBox(width: 8),
-          FloatingActionButton(
-            onPressed: _isLoading ? null : _sendMessage,
-            mini: true,
-            backgroundColor: Colors.blue.shade700,
-            disabledElevation: 0,
-            tooltip: 'Send message',
-            child: _isLoading
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Colors.white,
-                      ),
-                    ),
-                  )
-                : const Icon(Icons.send),
+          
+          if (_isLoading) const LinearProgressIndicator(),
+
+          // منطقة الإدخال (البيانات الأساسية تظهر فقط في البداية)
+          if (_messages.length <= 1)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  _buildSmallInput('Age', _ageController),
+                  _buildSmallInput('Symptoms', _symptomsController),
+                  _buildSmallInput('History', _historyController),
+                ],
+              ),
+            ),
+
+          // حقل الدردشة المستمرة
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _chatController,
+                    decoration: const InputDecoration(hintText: 'Type your question...', border: OutlineInputBorder()),
+                  ),
+                ),
+                IconButton(icon: const Icon(Icons.send, color: Color(0xFF102027)), onPressed: _isLoading ? null : _sendMessage),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  Widget _buildSmallInput(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: TextField(controller: controller, decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder())),
+    );
   }
-}
-
-class ChatMessage {
-  final String sender;
-  final String text;
-  final DateTime timestamp;
-  final bool isSystem;
-  final bool isError;
-
-  ChatMessage({
-    required this.sender,
-    required this.text,
-    required this.timestamp,
-    this.isSystem = false,
-    this.isError = false,
-  });
 }
