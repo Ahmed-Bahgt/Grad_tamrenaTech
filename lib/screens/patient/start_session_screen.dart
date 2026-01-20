@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import 'session_demo_screen.dart';
 import 'session_live_stream_screen.dart';
-import 'session_upload_video_screen.dart';
 
-/// Start Session Screen - Main hub with 3 tabs for session training
+  /// Start Session Screen - Main hub with 2 tabs for session training
 class StartSessionScreen extends StatefulWidget {
   final String planName;
   final VoidCallback? onBack;
@@ -26,7 +25,7 @@ class _StartSessionScreenState extends State<StartSessionScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -47,10 +46,17 @@ class _StartSessionScreenState extends State<StartSessionScreen>
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(t('Today\'s Session', 'جلسة اليوم')),
+            Text(
+              t('Today\'s Session', 'جلسة اليوم'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             Text(
               widget.planName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
@@ -62,6 +68,7 @@ class _StartSessionScreenState extends State<StartSessionScreen>
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: [
             Tab(
               icon: const Icon(Icons.video_library),
@@ -70,10 +77,6 @@ class _StartSessionScreenState extends State<StartSessionScreen>
             Tab(
               icon: const Icon(Icons.videocam),
               text: t('Live Stream', 'بث مباشر'),
-            ),
-            Tab(
-              icon: const Icon(Icons.upload_file),
-              text: t('Upload Video', 'رفع فيديو'),
             ),
           ],
         ),
@@ -88,9 +91,6 @@ class _StartSessionScreenState extends State<StartSessionScreen>
 
           // Tab 2: Live Stream
           SessionLiveStreamScreen(onBack: widget.onBack),
-
-          // Tab 3: Upload Video
-          SessionUploadVideoScreen(onBack: widget.onBack),
         ],
       ),
     );

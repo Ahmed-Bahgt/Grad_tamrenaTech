@@ -40,6 +40,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   late TextEditingController _sessionsController;
   late TextEditingController _setsController;
   late TextEditingController _repsController;
+  late String _selectedMode;
   late String _selectedPlan;
 
   final List<String> _planOptions = [
@@ -55,6 +56,9 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     _sessionsController = TextEditingController(text: widget.patient.sessions.toString());
     _setsController = TextEditingController(text: widget.patient.sets.toString());
     _repsController = TextEditingController(text: widget.patient.reps.toString());
+    _selectedMode = widget.patient.assignedMode.isNotEmpty
+      ? widget.patient.assignedMode
+      : 'Beginner';
     _selectedPlan = widget.patient.assignedPlan;
   }
 
@@ -70,6 +74,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   void _submitChanges() async {
     final updatedPatient = widget.patient.copyWith(
       assignedPlan: _selectedPlan,
+      assignedMode: _selectedMode,
       notes: _notesController.text,
       sessions: int.tryParse(_sessionsController.text) ?? widget.patient.sessions,
       sets: int.tryParse(_setsController.text) ?? widget.patient.sets,
@@ -306,6 +311,32 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     });
                   },
                 ),
+                const SizedBox(height: 12),
+                Text(
+                  t('Mode', 'الوضع'),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedMode,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    filled: true,
+                    fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                  ),
+                  dropdownColor: isDark ? const Color(0xFF161B22) : Colors.white,
+                  items: const [
+                    DropdownMenuItem(value: 'Beginner', child: Text('Beginner')),
+                    DropdownMenuItem(value: 'Pro', child: Text('Pro')),
+                  ],
+                  onChanged: (value) => setState(() => _selectedMode = value ?? 'Beginner'),
+                ),
                 if (_selectedPlan.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
@@ -347,60 +378,54 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
+                  Column(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _sessionsController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: t('Sessions', 'الجلسات'),
-                            hintText: '0',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            filled: true,
-                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-                            prefixIcon: const Icon(Icons.event_available, size: 20),
+                      TextField(
+                        controller: _sessionsController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: t('Total Sessions', 'إجمالي الجلسات'),
+                          hintText: '0',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          filled: true,
+                          fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                          prefixIcon: const Icon(Icons.event_available, size: 20),
                         ),
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _setsController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: t('Sets', 'المجموعات'),
-                            hintText: '3',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            filled: true,
-                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-                            prefixIcon: const Icon(Icons.repeat, size: 20),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _setsController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: t('Sets per Session', 'مجموعات لكل جلسة'),
+                          hintText: '3',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          filled: true,
+                          fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                          prefixIcon: const Icon(Icons.repeat, size: 20),
                         ),
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _repsController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: t('Reps', 'التكرارات'),
-                            hintText: '10',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            filled: true,
-                            fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-                            prefixIcon: const Icon(Icons.fitness_center, size: 20),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _repsController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: t('Repetitions per Set', 'تكرارات لكل مجموعة'),
+                          hintText: '10',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          filled: true,
+                          fillColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                          prefixIcon: const Icon(Icons.fitness_center, size: 20),
                         ),
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       ),
                     ],
                   ),

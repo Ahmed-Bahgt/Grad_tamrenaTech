@@ -117,6 +117,8 @@ class _PatientManagementScreenState extends State<PatientManagementScreen>
             color: isDark ? const Color(0xFF161B22) : Colors.white,
             child: TabBar(
               controller: _tabController,
+              isScrollable: true,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               indicatorColor: const Color(0xFF00BCD4),
               labelColor: const Color(0xFF00BCD4),
               unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,

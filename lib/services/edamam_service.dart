@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class EdamamService {
-  static const String _appId = 'ab39419c';
-  static const String _appKey = 'b0b536c6f2f785804fc7eedcdcf4aa6e';
+  static const String _appId = 'eabb9297';
+  static const String _appKey = 'aae21ab029fd618761b7c7f48d0d5d31';
   static const String _baseUrl = 'https://api.edamam.com/api/nutrition-details';
 
   // Daily Reference Intakes

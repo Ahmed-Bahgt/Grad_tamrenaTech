@@ -75,6 +75,7 @@ class PatientManager extends ChangeNotifier {
           phone: data['phone'] as String? ?? '',
           email: data['email'] as String? ?? '',
           assignedPlan: data['assignedPlan'] as String? ?? '',
+          assignedMode: data['assignedMode'] as String? ?? '',
           notes: data['notes'] as String? ?? '',
           lastSession: data['lastSession'] as String? ?? '',
           nextAppointment: data['nextAppointment'] as String? ?? '',
@@ -191,6 +192,7 @@ class PatientManager extends ChangeNotifier {
           phone: '',
           email: '',
           assignedPlan: '',
+          assignedMode: '',
           notes: '',
           lastSession: '',
           nextAppointment: '',
@@ -265,6 +267,7 @@ class PatientManager extends ChangeNotifier {
           .doc(updatedPatient.id)
           .update({
         'assignedPlan': updatedPatient.assignedPlan,
+        'assignedMode': updatedPatient.assignedMode,
         'notes': updatedPatient.notes,
         'sessions': updatedPatient.sessions,
         'completedSessions': updatedPatient.completedSessions,
@@ -289,6 +292,7 @@ class PatientData {
   final String phone;
   final String email;
   final String assignedPlan;
+  final String assignedMode;
   final String notes;
   final String lastSession;
   final String nextAppointment;
@@ -305,6 +309,7 @@ class PatientData {
     required this.phone,
     required this.email,
     required this.assignedPlan,
+    required this.assignedMode,
     required this.notes,
     required this.lastSession,
     required this.nextAppointment,
@@ -328,6 +333,7 @@ class PatientData {
     String? phone,
     String? email,
     String? assignedPlan,
+    String? assignedMode,
     String? notes,
     String? lastSession,
     String? nextAppointment,
@@ -343,6 +349,7 @@ class PatientData {
       phone: phone ?? this.phone,
       email: email ?? this.email,
       assignedPlan: assignedPlan ?? this.assignedPlan,
+      assignedMode: assignedMode ?? this.assignedMode,
       notes: notes ?? this.notes,
       lastSession: lastSession ?? this.lastSession,
       nextAppointment: nextAppointment ?? this.nextAppointment,

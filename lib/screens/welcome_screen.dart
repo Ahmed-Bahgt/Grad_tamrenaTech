@@ -69,86 +69,117 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
                 child: Stack(
                   children: [
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        // Logo (Replaced with provided runner logo)
-                        Image.asset(
-                          'assets/runner_logo.png',
-                          height: ResponsiveUtils.height(context) * 0.4,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(Icons.healing_rounded,
-                                size: ResponsiveUtils.height(context) * 0.4, 
-                                color: Theme.of(context).colorScheme.primary);
-                          },
-                        ),
-                        SizedBox(height: ResponsiveUtils.verticalSpacing(context, 16)),
-                        // App Name (Arabic and English)
-                        Text(
-                          'Tamrena-Tech تَمْرِينَتُكَ',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: ResponsiveUtils.fontSize(context, 34),
-                            fontWeight: FontWeight.w900,
-                            color: const Color.fromARGB(230, 0, 255, 166),
-                            letterSpacing: 1.5,
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: ResponsiveUtils.height(context) -
+                            ResponsiveUtils.verticalSpacing(context, 64),
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: <Widget>[
+                            // Logo (Replaced with provided runner logo)
+                            Image.asset(
+                              'assets/runner_logo.png',
+                              height: ResponsiveUtils.height(context) * 0.4,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(Icons.healing_rounded,
+                                    size: ResponsiveUtils.height(context) * 0.4,
+                                    color: Theme.of(context).colorScheme.primary);
+                              },
+                            ),
+
+                            // Spacer to push title/slogan to center
+                            const Spacer(),
+
+                            // Title and Slogan - Centered
+                            Column(
+                              children: [
+                                Text(
+                                  'Seneb',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize:
+                                        ResponsiveUtils.fontSize(context, 34),
+                                    fontWeight: FontWeight.w900,
+                                    color: const Color.fromARGB(230, 0, 204, 255),
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                                SizedBox(
+                                    height: ResponsiveUtils.spacing(context, 8)),
+                                Text(
+                                  t('Your path to recovery, in your hands.',
+                                      'طريقك للشفاء في يديك.'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize:
+                                        ResponsiveUtils.fontSize(context, 18),
+                                    color:
+                                        const Color.fromARGB(255, 74, 141, 195),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Spacer to balance and center text
+                            const Spacer(),
+
+                            SizedBox(
+                                height:
+                                    ResponsiveUtils.verticalSpacing(context, 20)),
+                          // Buttons
+                          GradientButton(
+                            text: t('Create Account', 'إنشاء حساب'),
+                            onPressed: widget.onCreateAccount,
+                            textColor: const Color.fromARGB(255, 255, 255, 255),
+                            startColor: const Color(0xFF8BC34A),
+                            endColor: const Color(0xFFB3E5FC),
+                            icon: const Icon(Icons.person_add_alt_1_rounded,
+                                color: Color.fromARGB(255, 255, 255, 255)),
                           ),
-                        ),
-                        SizedBox(height: ResponsiveUtils.spacing(context, 8)),
-                        // Slogan
-                        Text(
-                          t('Your path to recovery, in your hands.', 'طريقك للشفاء في يديك.'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: ResponsiveUtils.fontSize(context, 18),
-                            color: const Color(0xFF8BC34A),
-                            fontStyle: FontStyle.italic,
+                          SizedBox(
+                              height: ResponsiveUtils.spacing(context, 20)),
+                          GradientButton(
+                            text: t('Login as Doctor', 'تسجيل الدخول كطبيب'),
+                            onPressed: widget.onLoginDoctor,
+                            textColor: const Color.fromARGB(255, 255, 255, 255),
+                            startColor: const Color(0xFF4DD0E1),
+                            endColor: const Color(0xFF00BCD4),
+                            icon: const Icon(Icons.medical_services_rounded,
+                                color: Color.fromARGB(255, 255, 255, 255)),
                           ),
-                        ),
-                        SizedBox(height: ResponsiveUtils.verticalSpacing(context, 48)),
-                        // Buttons
-                        GradientButton(
-                          text: t('Create Account', 'إنشاء حساب'),
-                          onPressed: widget.onCreateAccount,
-                          textColor: const Color.fromARGB(255, 255, 255, 255),
-                          startColor: const Color(0xFF8BC34A),
-                          endColor: const Color(0xFFB3E5FC),
-                          icon: const Icon(Icons.person_add_alt_1_rounded,
-                              color: Color.fromARGB(255, 255, 255, 255)),
-                        ),
-                        SizedBox(height: ResponsiveUtils.spacing(context, 20)),
-                        GradientButton(
-                          text: t('Login as Doctor', 'تسجيل الدخول كطبيب'),
-                          onPressed: widget.onLoginDoctor,
-                          textColor: const Color.fromARGB(255, 255, 255, 255),
-                          startColor: const Color(0xFF4DD0E1),
-                          endColor: const Color(0xFF00BCD4),
-                          icon: const Icon(Icons.medical_services_rounded,
-                              color: Color.fromARGB(255, 255, 255, 255)),
-                        ),
-                        SizedBox(height: ResponsiveUtils.spacing(context, 20)),
-                        GradientButton(
-                          text: t('Login as Patient', 'تسجيل الدخول كمريض'),
-                          onPressed: widget.onLoginPatient,
-                          textColor: Colors.white,
-                          startColor: const Color(0xFF4DD0E1),
-                          endColor: const Color(0xFF00BCD4),
-                          icon: const Icon(Icons.accessibility_new_rounded,
-                              color: Color.fromARGB(255, 255, 255, 255)),
-                        ),
-                      ],
+                          SizedBox(
+                              height: ResponsiveUtils.spacing(context, 20)),
+                          GradientButton(
+                            text: t('Login as Patient', 'تسجيل الدخول كمريض'),
+                            onPressed: widget.onLoginPatient,
+                            textColor: Colors.white,
+                            startColor: const Color(0xFF4DD0E1),
+                            endColor: const Color(0xFF00BCD4),
+                            icon: const Icon(Icons.accessibility_new_rounded,
+                                color: Color.fromARGB(255, 255, 255, 255)),
+                          ),
+                        ],
+                      ),
+                      ),
                     ),
                     Positioned(
-                      top: ResponsiveUtils.isMobile(context) ? 0 : ResponsiveUtils.spacing(context, 16),
-                      right: ResponsiveUtils.isMobile(context) ? 0 : ResponsiveUtils.spacing(context, 16),
+                      top: ResponsiveUtils.isMobile(context)
+                          ? 0
+                          : ResponsiveUtils.spacing(context, 16),
+                      right: ResponsiveUtils.isMobile(context)
+                          ? 0
+                          : ResponsiveUtils.spacing(context, 16),
                       child: Container(
                         decoration: BoxDecoration(
                           color: const Color(0xFF00BCD4),
-                          borderRadius: BorderRadius.circular(ResponsiveUtils.spacing(context, 12)),
+                          borderRadius: BorderRadius.circular(
+                              ResponsiveUtils.spacing(context, 12)),
                         ),
                         child: IconButton(
                           icon: Icon(
-                            Icons.settings, 
+                            Icons.settings,
                             color: Colors.white,
                             size: ResponsiveUtils.iconSize(context, 24),
                           ),
@@ -162,31 +193,40 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                       title: const Text('Settings'),
                                       content: SingleChildScrollView(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             // Theme Section
                                             Text(
                                               'Theme',
-                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                             ),
                                             const SizedBox(height: 12),
                                             Container(
                                               decoration: BoxDecoration(
-                                                border: Border.all(color: Colors.grey[300]!),
-                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(
+                                                    color: Colors.grey[300]!),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
                                               child: ListTile(
                                                 title: const Text('Dark Mode'),
                                                 trailing: Switch(
-                                                  value: globalThemeProvider.isDarkMode,
+                                                  value: globalThemeProvider
+                                                      .isDarkMode,
                                                   onChanged: (value) {
-                                                    globalThemeProvider.toggleTheme();
+                                                    globalThemeProvider
+                                                        .toggleTheme();
                                                     setState(() {});
                                                   },
-                                                  activeThumbColor: const Color(0xFF00BCD4),
+                                                  activeThumbColor:
+                                                      const Color(0xFF00BCD4),
                                                 ),
                                               ),
                                             ),
@@ -195,41 +235,61 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                             // Language Section
                                             Text(
                                               'Language',
-                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                             ),
                                             const SizedBox(height: 12),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 8),
                                               decoration: BoxDecoration(
-                                                border: Border.all(color: Colors.grey[300]!),
-                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(
+                                                    color: Colors.grey[300]!),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
                                               child: Wrap(
                                                 spacing: 12,
                                                 children: [
                                                   ChoiceChip(
-                                                    label: const Text('English'),
-                                                    selected: globalThemeProvider.language == 'en',
+                                                    label:
+                                                        const Text('English'),
+                                                    selected:
+                                                        globalThemeProvider
+                                                                .language ==
+                                                            'en',
                                                     onSelected: (selected) {
                                                       if (selected) {
-                                                        globalThemeProvider.setLanguage('en');
+                                                        globalThemeProvider
+                                                            .setLanguage('en');
                                                         setState(() {});
                                                       }
                                                     },
-                                                    selectedColor: const Color(0x3300BCD4),
+                                                    selectedColor:
+                                                        const Color(0x3300BCD4),
                                                   ),
                                                   ChoiceChip(
-                                                    label: const Text('العربية (Arabic)'),
-                                                    selected: globalThemeProvider.language == 'ar',
+                                                    label: const Text(
+                                                        'العربية (Arabic)'),
+                                                    selected:
+                                                        globalThemeProvider
+                                                                .language ==
+                                                            'ar',
                                                     onSelected: (selected) {
                                                       if (selected) {
-                                                        globalThemeProvider.setLanguage('ar');
+                                                        globalThemeProvider
+                                                            .setLanguage('ar');
                                                         setState(() {});
                                                       }
                                                     },
-                                                    selectedColor: const Color(0x3300BCD4),
+                                                    selectedColor:
+                                                        const Color(0x3300BCD4),
                                                   ),
                                                 ],
                                               ),
@@ -239,7 +299,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                       ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(context),
+                                          onPressed: () =>
+                                              Navigator.pop(context),
                                           child: const Text('Close'),
                                         ),
                                       ],

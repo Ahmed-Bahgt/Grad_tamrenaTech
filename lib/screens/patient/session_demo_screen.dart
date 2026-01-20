@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
-/// Demo Screen - Shows example videos (matching Demo.py)
+/// Demo Screen - Shows example videos using YouTube (matching Demo.py)
 class SessionDemoScreen extends StatefulWidget {
   final VoidCallback? onBack;
 
@@ -14,18 +14,23 @@ class SessionDemoScreen extends StatefulWidget {
 class _SessionDemoScreenState extends State<SessionDemoScreen> {
   String _selectedTraining = 'Squat';
   String _selectedForm = 'Correct';
-  VideoPlayerController? _videoController;
-  bool _isVideoInitialized = false;
+  YoutubePlayerController? _videoController;
   bool _isLoading = false;
   String? _errorMessage;
 
   final Map<String, String> _trainingTypes = {'Squat': 'squat'};
   final Map<String, String> _formOptions = {'Correct': 'correct', 'Incorrect': 'incorrect'};
 
+  /// YouTube Video IDs mapping
+  final Map<String, String> _videoIdMap = {
+    'squat_correct': 'NjCrfSkrxDI',
+    'squat_incorrect': 'rS-nhzFEeLg',
+  };
+
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
+    _setupController();
   }
 
   @override
@@ -34,91 +39,52 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
     super.dispose();
   }
 
-  String _buildVideoPath() {
+  String _getVideoId() {
     final shortName = (_trainingTypes[_selectedTraining] ?? 'squat').toLowerCase();
     final formName = (_formOptions[_selectedForm] ?? 'correct').toLowerCase();
-    // Strictly lowercase to match file system
-    final videoPath = 'assets/videos/${shortName}_$formName.mp4';
-    return videoPath;
+    final key = '${shortName}_$formName';
+    return _videoIdMap[key] ?? 'NjCrfSkrxDI'; // Default to correct squat
   }
 
-  Future<void> _initializeVideo() async {
-    if (_isLoading) return;
+  void _setupController() {
+    final videoId = _getVideoId();
+    _videoController = YoutubePlayerController(
+      initialVideoId: videoId,
+      flags: const YoutubePlayerFlags(
+        autoPlay: true,
+        loop: true,
+        forceHD: false,
+        useHybridComposition: true,
+        controlsVisibleAtStart: false,
+      ),
+    );
+  }
 
-    // Update UI to show loading state
+  Future<void> _loadSelectedVideo() async {
+    if (_videoController == null) return;
+
     setState(() {
       _isLoading = true;
-      _isVideoInitialized = false;
       _errorMessage = null;
     });
 
+    final videoId = _getVideoId();
     try {
-      // Explicitly dispose old controller to prevent memory leaks
-      if (_videoController != null) {
-        await _videoController!.dispose();
-      }
-      _videoController = null;
-
-      // Small delay to allow disposal to complete
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // Build video path (strictly lowercase)
-      final videoPath = _buildVideoPath();
-      print('🎬 Video Path: $videoPath');
-
-      // Create new controller from asset
-      _videoController = VideoPlayerController.asset(videoPath);
-
-      // Explicitly initialize and wait for completion
-      try {
-        await _videoController!.initialize().timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            print('❌ Video initialization timeout for: $videoPath');
-            throw Exception('Video initialization timeout after 15 seconds');
-          },
-        );
-        print('✅ Video initialized successfully: $videoPath');
-      } catch (initError) {
-        print('❌ Initialization error for $videoPath: $initError');
-        rethrow;
-      }
-
-      // Check if widget is still mounted before setState
-      if (!mounted) {
-        print('⚠️ Widget unmounted during initialization');
-        return;
-      }
-
-      // Update UI with successful initialization
-      setState(() {
-        _isVideoInitialized = true;
-        _isLoading = false;
-        _errorMessage = null;
-      });
-
-      // Configure playback settings
-      try {
-        await _videoController!.setLooping(true);
-        await _videoController!.play();
-        print('▶️ Video playback started - looping enabled');
-      } catch (playError) {
-        print('❌ Playback error: $playError');
-        throw Exception('Failed to start playback: $playError');
-      }
+      _videoController!.load(videoId);
     } catch (e, stackTrace) {
-      // Log full error details for debugging
-      print('❌ Video initialization failed');
+      print('❌ Video load failed');
       print('Error: $e');
       print('Stack trace: $stackTrace');
-
       if (!mounted) return;
-
       setState(() {
-        _isVideoInitialized = false;
-        _isLoading = false;
-        _errorMessage = 'Video playback failed. Check logs for details. Error: ${e.toString()}';
+        _errorMessage = 'Video playback failed. Error: ${e.toString()}';
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -156,7 +122,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
                       items: _trainingTypes.keys.toList(),
                       onChanged: (v) {
                         setState(() => _selectedTraining = v ?? 'Squat');
-                        _initializeVideo();
+                        _loadSelectedVideo();
                       },
                       isDark: isDark,
                     ),
@@ -176,7 +142,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
                       items: _formOptions.keys.toList(),
                       onChanged: (v) {
                         setState(() => _selectedForm = v ?? 'Correct');
-                        _initializeVideo();
+                        _loadSelectedVideo();
                       },
                       isDark: isDark,
                     ),
@@ -195,12 +161,14 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
 
           Container(
             width: double.infinity,
-            height: 400,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF161B22) : Colors.grey[200],
               borderRadius: BorderRadius.circular(12),
             ),
-            child: _buildVideoContent(isDark),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _buildVideoContent(isDark),
+            ),
           ),
         ],
       ),
@@ -208,19 +176,6 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
   }
 
   Widget _buildVideoContent(bool isDark) {
-    if (_isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text('Loading video...', style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
-          ],
-        ),
-      );
-    }
-
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -240,7 +195,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _errorMessage ?? 'Device codec error',
+                _errorMessage ?? 'Network error',
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                   fontSize: 12,
@@ -249,7 +204,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: _initializeVideo,
+                onPressed: _loadSelectedVideo,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry'),
               ),
@@ -259,37 +214,35 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
       );
     }
 
-    if (_isVideoInitialized && _videoController != null && _videoController!.value.isInitialized) {
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          Center(
-            child: AspectRatio(
-              aspectRatio: _videoController!.value.aspectRatio,
-              child: VideoPlayer(_videoController!),
-            ),
-          ),
-          Positioned(
-            bottom: 16,
-            child: FloatingActionButton(
-              mini: true,
-              backgroundColor: Colors.black54,
-              onPressed: () {
-                setState(() {
-                  if (_videoController!.value.isPlaying) {
-                    _videoController!.pause();
-                  } else {
-                    _videoController!.play();
-                  }
-                });
-              },
-              child: Icon(
-                _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                color: Colors.white,
+    if (_videoController != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            YoutubePlayer(
+              controller: _videoController!,
+              showVideoProgressIndicator: true,
+              progressIndicatorColor: Colors.red,
+              progressColors: const ProgressBarColors(
+                playedColor: Colors.red,
+                handleColor: Colors.redAccent,
               ),
             ),
-          ),
-        ],
+            if (_isLoading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.15),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       );
     }
 
@@ -302,7 +255,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
           Text('Ready to play', style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: _initializeVideo,
+            onPressed: _loadSelectedVideo,
             icon: const Icon(Icons.play_arrow),
             label: const Text('Load Video'),
             style: ElevatedButton.styleFrom(

@@ -796,7 +796,6 @@ class _ProgressHeader extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(3, (i) {
               final active = i <= currentIndex;
               return Expanded(
@@ -808,7 +807,18 @@ class _ProgressHeader extends StatelessWidget {
                       child: Icon(icons[i], size: 16, color: Colors.white),
                     ),
                     const SizedBox(width: 8),
-                    Text(labels[i], style: TextStyle(color: active ? (isDark ? Colors.white : Colors.black87) : (isDark ? Colors.white54 : Colors.black45))),
+                    Expanded(
+                      child: Text(
+                        labels[i],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: active
+                              ? (isDark ? Colors.white : Colors.black87)
+                              : (isDark ? Colors.white54 : Colors.black45),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               );

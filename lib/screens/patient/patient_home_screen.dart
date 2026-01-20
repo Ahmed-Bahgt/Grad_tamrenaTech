@@ -269,6 +269,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 SizedBox(height: ResponsiveUtils.spacing(context, 4)),
                 Text(
@@ -277,16 +279,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     fontSize: ResponsiveUtils.fontSize(context, 12),
                     color: isDark ? Colors.white60 : Colors.black54,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 SizedBox(height: ResponsiveUtils.spacing(context, 8)),
-                Row(
+                Wrap(
+                  spacing: ResponsiveUtils.spacing(context, 8),
+                  runSpacing: ResponsiveUtils.spacing(context, 4),
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Icon(
                       Icons.calendar_today,
                       size: ResponsiveUtils.iconSize(context, 14),
                       color: isDark ? Colors.white54 : Colors.black54,
                     ),
-                    SizedBox(width: ResponsiveUtils.spacing(context, 6)),
                     Text(
                       dateFormat.format(booking.dateTime),
                       style: TextStyle(
@@ -294,13 +300,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         color: isDark ? Colors.white54 : Colors.black54,
                       ),
                     ),
-                    SizedBox(width: ResponsiveUtils.spacing(context, 12)),
                     Icon(
                       Icons.access_time,
                       size: ResponsiveUtils.iconSize(context, 14),
                       color: isDark ? Colors.white54 : Colors.black54,
                     ),
-                    SizedBox(width: ResponsiveUtils.spacing(context, 6)),
                     Text(
                       '${timeFormat.format(booking.dateTime)} - ${timeFormat.format(booking.endTime)}',
                       style: TextStyle(
@@ -617,4 +621,5 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       ],
     );
   }
+
 }

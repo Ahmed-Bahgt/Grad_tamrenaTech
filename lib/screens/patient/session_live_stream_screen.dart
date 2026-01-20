@@ -11,6 +11,7 @@ import '../../utils/squat_logic.dart';
 import '../../utils/squat_processor.dart';
 import '../../utils/pose_analyzer.dart';
 import '../../widgets/pose_painter.dart';
+import '../../utils/patient_profile_manager.dart';
 
 /// Live Stream Screen matching Live_Stream.py logic
 class SessionLiveStreamScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   String _selectedMode = 'Beginner';
   int _targetReps = 10;
   int _targetSets = 3;
+  String _assignedExercise = '';
   bool _isStreamActive = false;
   bool _isProcessing = false;
   bool _calibrating = false;
@@ -45,9 +47,27 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   @override
   void initState() {
     super.initState();
+    _loadAssignedPlan();
     _initializeProcessor();
     _initializeCamera();
     _initializePoseDetectorAsync();
+  }
+
+  void _loadAssignedPlan() {
+    final profile = PatientProfileManager();
+    final type = profile.exerciseType;
+    final sets = profile.exerciseSets;
+    final reps = profile.exerciseReps;
+    final mode = profile.exerciseMode;
+
+    setState(() {
+      _assignedExercise = type;
+      if (reps > 0) _targetReps = reps;
+      if (sets > 0) _targetSets = sets;
+      if (mode.isNotEmpty) {
+        _selectedMode = mode;
+      }
+    });
   }
 
   @override
@@ -797,7 +817,7 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
     final accuracy = totalReps > 0
         ? (correctReps / totalReps * 100).toStringAsFixed(1)
         : '0.0';
-    
+
     // Check if session was successfully completed (all sets done)
     final sessionCompleted = _squatProcessor.sessionComplete;
 
@@ -870,9 +890,11 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       final timestamp = DateTime.now();
 
       // Save session data to /Patients/{patientId}/Sessions/{sessionId}
-      debugPrint('[SessionLiveStream] Saving session for patientId: $patientId');
-      debugPrint('[SessionLiveStream] Session Data: correct=$correctReps, wrong=$incorrectReps, accuracy=$accuracyPercentage%');
-      
+      debugPrint(
+          '[SessionLiveStream] Saving session for patientId: $patientId');
+      debugPrint(
+          '[SessionLiveStream] Session Data: correct=$correctReps, wrong=$incorrectReps, accuracy=$accuracyPercentage%');
+
       await FirebaseFirestore.instance
           .collection('Patients')
           .doc(patientId)
@@ -893,7 +915,7 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       });
 
       debugPrint('[SessionLiveStream] Session saved successfully: $sessionId');
-      
+
       // Show success feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -924,24 +946,28 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final patientRef = FirebaseFirestore.instance.collection('patients').doc(user.uid);
-      
+      final patientRef =
+          FirebaseFirestore.instance.collection('patients').doc(user.uid);
+
       // Get current completedSessions count
       final snapshot = await patientRef.get();
       if (!snapshot.exists) return;
-      
+
       final data = snapshot.data();
-      final currentCompleted = (data?['completedSessions'] as num?)?.toInt() ?? 0;
-      
+      final currentCompleted =
+          (data?['completedSessions'] as num?)?.toInt() ?? 0;
+
       // Increment by 1
       await patientRef.update({
         'completedSessions': currentCompleted + 1,
         'lastSession': DateTime.now().toIso8601String(),
       });
-      
-      debugPrint('[SessionLiveStream] Incremented completedSessions: ${currentCompleted + 1}');
+
+      debugPrint(
+          '[SessionLiveStream] Incremented completedSessions: ${currentCompleted + 1}');
     } catch (e) {
-      debugPrint('[SessionLiveStream] Error incrementing completedSessions: $e');
+      debugPrint(
+          '[SessionLiveStream] Error incrementing completedSessions: $e');
     }
   }
 
@@ -963,7 +989,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
       await _cameraController?.dispose();
 
       // Switch to next camera
-      _currentCameraIndex = (_currentCameraIndex + 1) % _availableCameras.length;
+      _currentCameraIndex =
+          (_currentCameraIndex + 1) % _availableCameras.length;
 
       // Initialize new camera
       _cameraController = CameraController(
@@ -986,7 +1013,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
         await _cameraController!.startImageStream(_processImage);
       }
 
-      debugPrint('[SessionLiveStream] Switched to camera: ${_availableCameras[_currentCameraIndex].name}');
+      debugPrint(
+          '[SessionLiveStream] Switched to camera: ${_availableCameras[_currentCameraIndex].name}');
     } catch (e) {
       debugPrint('[SessionLiveStream] Error switching camera: $e');
       _showErrorDialog('Failed to switch camera: $e');
@@ -997,7 +1025,39 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Settings
+          // Show message if no plan assigned
+          if (_assignedExercise.isEmpty)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1C1F26) : Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.orange,
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      color: Colors.orange, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      t('Doctor didn\'t set a rehabilitation plan yet',
+                          'لم يحدد الطبيب خطة إعادة تأهيل بعد'),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.orange[300] : Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1021,11 +1081,11 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
                         child: _modeButton(
                             'Beginner',
                             _selectedMode == 'Beginner',
-                            () => setState(() => _selectedMode = 'Beginner'))),
+                            null)), // Always locked for patients
                     const SizedBox(width: 12),
                     Expanded(
                         child: _modeButton('Pro', _selectedMode == 'Pro',
-                            () => setState(() => _selectedMode = 'Pro'))),
+                            null)), // Always locked for patients
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1036,14 +1096,14 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
                             t('Reps per Set', 'التكرارات'),
                             _targetReps,
                             20,
-                            (v) => setState(() => _targetReps = v))),
+                            null)), // Always locked for patients
                     const SizedBox(width: 12),
                     Expanded(
                         child: _buildDropdown(
                             t('Total Sets', 'المجموعات'),
                             _targetSets,
                             10,
-                            (v) => setState(() => _targetSets = v))),
+                            null)), // Always locked for patients
                   ],
                 ),
               ],
@@ -1075,7 +1135,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
                                     Text(
                                         t('Initializing camera...',
                                             'جاري تهيئة الكاميرا...'),
-                                        style: TextStyle(color: Colors.grey[600])),
+                                        style:
+                                            TextStyle(color: Colors.grey[600])),
                                   ],
                                 ),
                               ),
@@ -1164,10 +1225,11 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
     );
   }
 
-  Widget _modeButton(String label, bool isSelected, VoidCallback onTap) {
+  Widget _modeButton(String label, bool isSelected, VoidCallback? onTap) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDisabled = onTap == null;
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
@@ -1192,8 +1254,9 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
   }
 
   Widget _buildDropdown(
-      String label, int value, int max, Function(int) onChanged) {
+      String label, int value, int max, Function(int)? onChanged) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDisabled = onChanged == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1218,7 +1281,8 @@ class _SessionLiveStreamScreenState extends State<SessionLiveStreamScreen> {
             dropdownColor: isDark ? const Color(0xFF161B22) : Colors.white,
             style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87, fontSize: 14),
-            onChanged: (v) => v != null ? onChanged(v) : null,
+            onChanged:
+                isDisabled ? null : (v) => v != null ? onChanged(v) : null,
             items: List.generate(max, (i) => i + 1)
                 .map((n) =>
                     DropdownMenuItem(value: n, child: Text(n.toString())))
