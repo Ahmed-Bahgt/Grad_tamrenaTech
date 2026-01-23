@@ -56,6 +56,8 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
         forceHD: false,
         useHybridComposition: true,
         controlsVisibleAtStart: false,
+        enableCaption: false,
+        mute: false,
       ),
     );
   }

@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import '../utils/api_config.dart';
 
 class GeminiService {
-  static const String _apiKey = 'AIzaSyACGlwgZXcAKx4rmKvLAKrFGnNKvZX8Pbo';
   late final GenerativeModel _model;
 
   /// Cache for ingredient extractions to avoid quota waste
@@ -13,8 +13,8 @@ class GeminiService {
 
   GeminiService() {
     _model = GenerativeModel(
-      model: 'gemini-2.5-flash',
-      apiKey: _apiKey,
+      model: ApiConfig.geminiModel,
+      apiKey: ApiConfig.geminiApiKey,
     );
   }
 

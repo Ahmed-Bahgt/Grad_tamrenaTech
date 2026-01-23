@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
+import '../../utils/api_config.dart';
 
 class MedicalChatbotScreen extends StatefulWidget {
   const MedicalChatbotScreen({super.key});
@@ -10,10 +11,7 @@ class MedicalChatbotScreen extends StatefulWidget {
   State<MedicalChatbotScreen> createState() => _MedicalChatbotScreenState();
 }
 
-class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
-  static const String _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
-  static const String _apiKey = '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';
-  static const String _model = 'llama-3.3-70b-versatile'; // موديل أقوى وأحدث
+class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> { 
 
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _symptomsController = TextEditingController();
@@ -23,7 +21,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
 
   bool _isLoading = false;
   
-  // قائمة لتخزين تاريخ المحادثة بالكامل
   List<Map<String, String>> _messages = [
     {
       'role': 'system',
@@ -31,7 +28,7 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
     }
   ];
 
-  // دالة لبدء محادثة جديدة لمريض جديد
+  
   void _startNewChat() {
     setState(() {
       _messages = [
@@ -49,7 +46,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
     
     setState(() {
       _isLoading = true;
-      // إذا كانت أول رسالة، ندمج بيانات المريض
       if (_messages.length == 1) {
         String initialData = "Age: ${_ageController.text}, Symptoms: ${_symptomsController.text}, History: ${_historyController.text}. Question: ${_chatController.text}";
         _messages.add({'role': 'user', 'content': initialData});
@@ -63,12 +59,12 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {'Authorization': 'Bearer $_apiKey', 'Content-Type': 'application/json'},
+        Uri.parse(ApiConfig.baseUrl),
+        headers: {'Authorization': 'Bearer ${ApiConfig.apiKey}', 'Content-Type': 'application/json'},
         body: jsonEncode({
-          'model': _model,
-          'messages': _messages, // إرسال التاريخ بالكامل للموديل ليتذكر السياق
-          'temperature': 0.7,
+          'model': ApiConfig.model,
+          'messages': _messages,
+          'temperature': ApiConfig.temperature,
         }),
       );
 
@@ -109,7 +105,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('AI Medical Assistant'), backgroundColor: const Color(0xFF102027), foregroundColor: Colors.white),
       
-      // القائمة الجانبية (Drawer)
       drawer: Drawer(
         child: Column(
           children: [
@@ -126,7 +121,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
               },
             ),
             const Divider(),
-            // هنا يمكن إضافة قائمة بالشاتات المحفوظة لاحقاً
           ],
         ),
       ),

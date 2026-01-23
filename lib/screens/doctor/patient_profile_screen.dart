@@ -322,7 +322,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedMode,
+                  initialValue: _selectedMode,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),

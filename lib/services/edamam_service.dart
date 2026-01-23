@@ -1,10 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/api_config.dart';
 
 class EdamamService {
-  static const String _appId = 'eabb9297';
-  static const String _appKey = 'aae21ab029fd618761b7c7f48d0d5d31';
-  static const String _baseUrl = 'https://api.edamam.com/api/nutrition-details';
 
   // Daily Reference Intakes
   static const Map<String, double> _dris = {
@@ -44,7 +42,7 @@ class EdamamService {
         'ingr': ingredientsList,
       });
 
-      final uri = Uri.parse('$_baseUrl?app_id=$_appId&app_key=$_appKey');
+      final uri = Uri.parse('${ApiConfig.edamamBaseUrl}?app_id=${ApiConfig.edamamAppId}&app_key=${ApiConfig.edamamAppKey}');
       final response = await http.post(uri, headers: headers, body: body);
 
       if (response.statusCode != 200) {

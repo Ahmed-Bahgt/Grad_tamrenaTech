@@ -68,11 +68,11 @@ class _StartSessionScreenState extends State<StartSessionScreen>
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true,
+          isScrollable: false,
           tabs: [
             Tab(
               icon: const Icon(Icons.video_library),
-              text: t('Demo', 'عرض توضيحي'),
+              text: t('Preview', 'معاينة'),
             ),
             Tab(
               icon: const Icon(Icons.videocam),

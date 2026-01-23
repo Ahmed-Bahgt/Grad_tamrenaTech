@@ -12,6 +12,12 @@
 .swiftpm/
 migrate_working_dir/
 
+# API Keys & Sensitive Configuration
+lib/utils/api_config.dart
+.env
+*.env
+api_keys.txt
+
 # IntelliJ related
 *.iml
 *.ipr
