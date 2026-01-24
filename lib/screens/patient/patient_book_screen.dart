@@ -377,8 +377,11 @@ class _PatientBookScreenState extends State<PatientBookScreen> {
                     ? '$firstName $lastName'
                     : patientData?['fullName'] as String? ?? 'Patient';
 
+                // Add patient name to booking before saving
+                booking.patientName = patientName;
+
                 // Add booking
-                PatientBookingsManager().addBooking(booking);
+                await PatientBookingsManager().addBooking(booking);
 
                 // Remove slot from doctor's availability
                 await AvailabilityManager.removeSlotForDoctor(doctor.id, slot);

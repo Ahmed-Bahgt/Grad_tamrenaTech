@@ -15,7 +15,7 @@ class AvailabilityManager implements Listenable {
     // Initial load for current user
     _loadSlotsFromFirestore();
     _listenToBookedCount();
-    _loadBookedAppointmentsFromFirestore();
+    _listenToBookedAppointments();
     // React to auth changes to keep slots scoped to the signed-in doctor
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user == null) {
@@ -24,12 +24,13 @@ class AvailabilityManager implements Listenable {
         _bookedCount = 0;
         _bookedAppointments.clear();
         _bookedCountSub?.cancel();
+        _bookedAppointmentsSub?.cancel();
         _notifyListeners();
       } else {
-        // Signed in as a different doctor: reload that doctor's slots and booked count
+        // Signed in as a different doctor: reload that doctor's slots and booked appointments
         _loadSlotsFromFirestore();
         _listenToBookedCount();
-        _loadBookedAppointmentsFromFirestore();
+        _listenToBookedAppointments();
       }
     });
   }
@@ -42,6 +43,7 @@ class AvailabilityManager implements Listenable {
   int _bookedCount = 0;
   final List<BookedAppointment> _bookedAppointments = [];
   StreamSubscription<QuerySnapshot>? _bookedCountSub;
+  StreamSubscription<QuerySnapshot>? _bookedAppointmentsSub;
 
   List<AvailabilitySlot> get slots => List.unmodifiable(_slots);
   int? get editingIndex => _editingIndex;
@@ -84,9 +86,11 @@ class AvailabilityManager implements Listenable {
       _notifyListeners();
       return;
     }
+    // Query only the doctor's own bookings collection to avoid duplicates
     _bookedCountSub = FirebaseFirestore.instance
-        .collectionGroup('bookings')
-        .where('doctorId', isEqualTo: user.uid)
+        .collection('doctors')
+        .doc(user.uid)
+        .collection('bookings')
         .where('status', isNotEqualTo: 'cancelled')
         .snapshots()
         .listen((snapshot) {
@@ -99,6 +103,71 @@ class AvailabilityManager implements Listenable {
     });
   }
 
+  /// Listen to booked appointments in real-time for current doctor
+  void _listenToBookedAppointments() {
+    _bookedAppointmentsSub?.cancel();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _bookedAppointments.clear();
+      _notifyListeners();
+      return;
+    }
+
+    debugPrint('[AvailabilityManager] Setting up real-time listener for doctor bookings: ${user.uid}');
+
+    // Query only the doctor's own bookings collection to avoid duplicates
+    _bookedAppointmentsSub = FirebaseFirestore.instance
+        .collection('doctors')
+        .doc(user.uid)
+        .collection('bookings')
+        .where('status', isNotEqualTo: 'cancelled')
+        .snapshots()
+        .listen((snapshot) {
+      debugPrint(
+          '[AvailabilityManager] 🔥 Real-time update received: ${snapshot.docs.length} booked appointments');
+
+      try {
+        _bookedAppointments.clear();
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          
+          // Defensive null checks for required timestamp fields
+          final dateTimeField = data['dateTime'];
+          final endTimeField = data['endTime'];
+          
+          if (dateTimeField == null || endTimeField == null) {
+            debugPrint(
+                '[AvailabilityManager] ⚠️ Skipping appointment ${doc.id}: missing dateTime or endTime');
+            continue;
+          }
+          
+          final dateTime = (dateTimeField as Timestamp).toDate();
+          final endTime = (endTimeField as Timestamp).toDate();
+
+          _bookedAppointments.add(BookedAppointment(
+            id: doc.id,
+            doctorId: data['doctorId'] as String? ?? '',
+            doctorName: data['doctorName'] as String? ?? 'Unknown Doctor',
+            patientId: data['patientId'] as String? ?? '',
+            patientName: data['patientName'] as String? ?? 'Patient',
+            dateTime: dateTime,
+            endTime: endTime,
+            status: data['status'] as String? ?? 'upcoming',
+          ));
+        }
+        _bookedAppointments.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+        debugPrint(
+            '[AvailabilityManager] ✅ Real-time update complete: ${_bookedAppointments.length} booked appointments');
+        _notifyListeners();
+      } catch (e) {
+        debugPrint(
+            '[AvailabilityManager] ❌ Error processing booked appointments update: $e');
+      }
+    }, onError: (e) {
+      debugPrint('[AvailabilityManager] ❌ Real-time listener error for bookings: $e');
+    });
+  }
+
   /// Load booked appointments from Firestore for current doctor
   Future<void> _loadBookedAppointmentsFromFirestore() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -108,10 +177,11 @@ class AvailabilityManager implements Listenable {
     }
 
     try {
-      // Get all bookings for this doctor across all patients
+      // Query only the doctor's own bookings collection to avoid duplicates
       final snapshot = await FirebaseFirestore.instance
-          .collectionGroup('bookings')
-          .where('doctorId', isEqualTo: user.uid)
+          .collection('doctors')
+          .doc(user.uid)
+          .collection('bookings')
           .where('status', isNotEqualTo: 'cancelled')
           .get();
 
@@ -125,7 +195,7 @@ class AvailabilityManager implements Listenable {
           id: doc.id,
           doctorId: data['doctorId'] as String? ?? '',
           doctorName: data['doctorName'] as String? ?? '',
-          patientId: doc.reference.parent.parent?.id ?? '',
+          patientId: data['patientId'] as String? ?? '',
           patientName: data['patientName'] as String? ?? 'Patient',
           dateTime: dateTime,
           endTime: endTime,
@@ -203,34 +273,11 @@ class AvailabilityManager implements Listenable {
       }
 
       if (slotRemoved) {
-        // Remove all bookings for this slot from both doctor and patient collections
-        final bookingsQuery = await FirebaseFirestore.instance
-            .collection('doctors')
-            .doc(doctorId)
-            .collection('bookings')
-            .where('dateTime', isEqualTo: DateTime(slot.date.year, slot.date.month, slot.date.day, slot.timeFrom.hour, slot.timeFrom.minute))
-            .where('endTime', isEqualTo: DateTime(slot.date.year, slot.date.month, slot.date.day, slot.timeTo.hour, slot.timeTo.minute))
-            .get();
-
-        for (final bookingDoc in bookingsQuery.docs) {
-          final bookingData = bookingDoc.data();
-          final patientId = bookingData['patientId'] as String?;
-          // Delete from doctor's bookings
-          await bookingDoc.reference.delete();
-          // Delete from patient's bookings if patientId exists
-          if (patientId != null && patientId.isNotEmpty) {
-            try {
-              await FirebaseFirestore.instance
-                  .collection('patients')
-                  .doc(patientId)
-                  .collection('bookings')
-                  .doc(bookingDoc.id)
-                  .delete();
-            } catch (e) {
-              debugPrint('Error removing booking from patient: $e');
-            }
-          }
-        }
+        // Note: We do NOT delete bookings here. Bookings are preserved on both
+        // patient and doctor sides. The slot is simply marked as unavailable by
+        // removing it from the availability_slots collection. Bookings remain
+        // visible in upcoming appointments for both patient and doctor.
+        debugPrint('[AvailabilityManager] Slot removed for doctor $doctorId at ${slot.date} ${slot.timeFrom}-${slot.timeTo}');
       }
     } catch (e) {
       debugPrint('Error removing doctor slot and related bookings: $e');

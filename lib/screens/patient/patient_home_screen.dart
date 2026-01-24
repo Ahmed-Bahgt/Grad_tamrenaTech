@@ -31,6 +31,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _bookingsManager.addListener(_onBookingsChanged);
     _plansManager.addListener(_onPlansChanged);
     _profileManager.addListener(_onProfileChanged);
+    // Ensure we get an initial snapshot even if listener is slow to fire
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bookingsManager.refresh();
+    });
   }
 
   void _onBookingsChanged() {
@@ -72,7 +76,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.only(bottom: ResponsiveUtils.spacing(context, 24)),
+          padding:
+              EdgeInsets.only(bottom: ResponsiveUtils.spacing(context, 24)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -90,11 +95,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   children: [
                     // Section 2: Upcoming Bookings
                     _buildUpcomingBookingsSection(context, isDark),
-                    SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+                    SizedBox(
+                        height: ResponsiveUtils.verticalSpacing(context, 24)),
 
                     // Section 3: Medical Plan
                     _buildMedicalPlanSection(context, isDark),
-                    SizedBox(height: ResponsiveUtils.verticalSpacing(context, 24)),
+                    SizedBox(
+                        height: ResponsiveUtils.verticalSpacing(context, 24)),
 
                     // Section 4: Doctor Notes
                     _buildDoctorNotesSection(context, isDark),
@@ -108,14 +115,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  Widget _buildWelcomeSection(BuildContext context, bool isDark, String patientName) {
+  Widget _buildWelcomeSection(
+      BuildContext context, bool isDark, String patientName) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
         horizontal: ResponsiveUtils.padding(context, 20),
         vertical: ResponsiveUtils.verticalSpacing(context, 24),
       ),
-      margin: ResponsiveUtils.horizontalPadding(context).copyWith(top: 0, bottom: 0),
+      margin: ResponsiveUtils.horizontalPadding(context)
+          .copyWith(top: 0, bottom: 0),
       // Remove fixed height to allow content to expand naturally
       // height: ResponsiveUtils.isMobile(context)
       //     ? 140
@@ -227,9 +236,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  Widget _buildBookingCard(BuildContext context, PatientBooking booking, bool isDark) {
+  Widget _buildBookingCard(
+      BuildContext context, PatientBooking booking, bool isDark) {
     final dateFormat = DateFormat('EEE, MMM d');
+    final dayFormat = DateFormat('EEEE');
     final timeFormat = DateFormat('h:mm a');
+    final dayLabel = dayFormat.format(booking.dateTime);
+    final dateLabel = dateFormat.format(booking.dateTime);
+    final timeLabel =
+        '${timeFormat.format(booking.dateTime)} - ${timeFormat.format(booking.endTime)}';
 
     return Container(
       margin: EdgeInsets.only(bottom: ResponsiveUtils.spacing(context, 12)),
@@ -253,7 +268,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             child: Center(
               child: Text(
                 booking.doctorImage,
-                style: TextStyle(fontSize: ResponsiveUtils.fontSize(context, 24)),
+                style:
+                    TextStyle(fontSize: ResponsiveUtils.fontSize(context, 24)),
               ),
             ),
           ),
@@ -262,15 +278,56 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  booking.doctorName,
-                  style: TextStyle(
-                    fontSize: ResponsiveUtils.fontSize(context, 16),
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        booking.doctorName,
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.fontSize(context, 16),
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveUtils.spacing(context, 8),
+                        vertical: ResponsiveUtils.spacing(context, 4),
+                      ),
+                      decoration: BoxDecoration(
+                        color: (booking.status == 'cancelled'
+                                ? Colors.redAccent
+                                : booking.status == 'completed'
+                                    ? _accentColor(isDark)
+                                    : _accentAltColor(isDark))
+                            .withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: booking.status == 'cancelled'
+                              ? Colors.redAccent.withOpacity(0.6)
+                              : (booking.status == 'completed'
+                                      ? _accentColor(isDark)
+                                      : _accentAltColor(isDark))
+                                  .withOpacity(0.6),
+                        ),
+                      ),
+                      child: Text(
+                        booking.status.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.fontSize(context, 11),
+                          fontWeight: FontWeight.w700,
+                          color: booking.status == 'cancelled'
+                              ? Colors.redAccent
+                              : (booking.status == 'completed'
+                                  ? _accentColor(isDark)
+                                  : _accentAltColor(isDark)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 SizedBox(height: ResponsiveUtils.spacing(context, 4)),
                 Text(
@@ -282,35 +339,29 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                SizedBox(height: ResponsiveUtils.spacing(context, 8)),
+                SizedBox(height: ResponsiveUtils.spacing(context, 10)),
                 Wrap(
                   spacing: ResponsiveUtils.spacing(context, 8),
-                  runSpacing: ResponsiveUtils.spacing(context, 4),
+                  runSpacing: ResponsiveUtils.spacing(context, 6),
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: ResponsiveUtils.iconSize(context, 14),
-                      color: isDark ? Colors.white54 : Colors.black54,
+                    _infoChip(
+                      context,
+                      icon: Icons.event_available,
+                      label: dayLabel,
+                      isDark: isDark,
                     ),
-                    Text(
-                      dateFormat.format(booking.dateTime),
-                      style: TextStyle(
-                        fontSize: ResponsiveUtils.fontSize(context, 12),
-                        color: isDark ? Colors.white54 : Colors.black54,
-                      ),
+                    _infoChip(
+                      context,
+                      icon: Icons.calendar_today,
+                      label: dateLabel,
+                      isDark: isDark,
                     ),
-                    Icon(
-                      Icons.access_time,
-                      size: ResponsiveUtils.iconSize(context, 14),
-                      color: isDark ? Colors.white54 : Colors.black54,
-                    ),
-                    Text(
-                      '${timeFormat.format(booking.dateTime)} - ${timeFormat.format(booking.endTime)}',
-                      style: TextStyle(
-                        fontSize: ResponsiveUtils.fontSize(context, 12),
-                        color: isDark ? Colors.white54 : Colors.black54,
-                      ),
+                    _infoChip(
+                      context,
+                      icon: Icons.access_time,
+                      label: timeLabel,
+                      isDark: isDark,
                     ),
                   ],
                 ),
@@ -361,6 +412,42 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _infoChip(BuildContext context,
+      {required IconData icon, required String label, required bool isDark}) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveUtils.spacing(context, 10),
+        vertical: ResponsiveUtils.spacing(context, 6),
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : const Color(0xFFF2F5F8),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? Colors.white12 : const Color(0xFFE0E6ED),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: ResponsiveUtils.iconSize(context, 14),
+            color: isDark ? Colors.white70 : Colors.black54,
+          ),
+          SizedBox(width: ResponsiveUtils.spacing(context, 6)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: ResponsiveUtils.fontSize(context, 12),
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -512,7 +599,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget _buildDoctorNotesSection(BuildContext context, bool isDark) {
     // Get doctor notes from patient data
     final doctorNotes = _profileManager.patientNotes.trim();
-    
+
     // If no notes from doctor, show empty state
     if (doctorNotes.isEmpty) {
       return Column(
@@ -596,7 +683,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                margin: EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
+                margin:
+                    EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
@@ -621,5 +709,4 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       ],
     );
   }
-
 }

@@ -14,6 +14,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
@@ -107,17 +109,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     bool isDark,
   ) {
     final dateFormat = DateFormat('EEE, MMM d');
-    final timeFormat = DateFormat('HH:mm');
+    final dayFormat = DateFormat('EEEE');
+    final timeFormat = DateFormat('h:mm a');
     
-    final appointmentDate = dateFormat.format(appointment.dateTime);
-    final startTime = timeFormat.format(appointment.dateTime);
-    final endTime = appointment.endTime != null 
-        ? timeFormat.format(appointment.endTime!) 
-        : '';
+    final dayLabel = dayFormat.format(appointment.dateTime);
+    final dateLabel = dateFormat.format(appointment.dateTime);
+    final timeLabel = appointment.endTime != null
+        ? '${timeFormat.format(appointment.dateTime)} - ${timeFormat.format(appointment.endTime!)}'
+        : timeFormat.format(appointment.dateTime);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -125,63 +128,183 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           color: isDark ? Colors.white12 : Colors.grey[300]!,
         ),
       ),
-      child: InkWell(
-        onTap: () {
-          _showAppointmentDetails(context, appointment, isDark);
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8BC34A).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.calendar_month,
+      child: Row(
+        children: [
+          // Patient Avatar
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8BC34A).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                (appointment.patientName ?? 'P').substring(0, 1).toUpperCase(),
+                style: const TextStyle(
                   color: Color(0xFF8BC34A),
-                  size: 24,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Patient Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appointment.patientName ?? t('Unknown Patient', 'مريض غير معروف'),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Day
+                Row(
                   children: [
-                    Text(
-                      appointment.patientName ?? t('Unknown Patient', 'مريض غير معروف'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
+                    Icon(
+                      Icons.calendar_today,
+                      size: 14,
+                      color: isDark ? Colors.white60 : Colors.black54,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(width: 6),
                     Text(
-                      endTime.isNotEmpty
-                          ? '$appointmentDate • $startTime - $endTime'
-                          : '$appointmentDate • $startTime',
+                      dayLabel,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         color: isDark ? Colors.white60 : Colors.black54,
                       ),
                     ),
                   ],
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: isDark ? Colors.white54 : Colors.black54,
-              ),
-            ],
+                const SizedBox(height: 4),
+                // Date
+                Row(
+                  children: [
+                    Icon(
+                      Icons.event,
+                      size: 14,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      dateLabel,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                // Time
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      size: 14,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      timeLabel,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+          // Delete Icon
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: t('Cancel appointment', 'إلغاء الموعد'),
+            onPressed: () => _confirmCancelAppointment(appointment),
+          ),
+        ],
       ),
     );
+  }
+
+  void _confirmCancelAppointment(BookedAppointment appointment) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t('Cancel Appointment?', 'إلغاء الموعد؟')),
+        content: Text(
+          t(
+            'Do you want to cancel this appointment with ${appointment.patientName}?',
+            'هل تريد إلغاء هذا الموعد مع ${appointment.patientName}؟',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('No', 'لا')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(context);
+              await _cancelAppointment(appointment);
+            },
+            child: Text(
+              t('Yes, Cancel', 'نعم، إلغاء'),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelAppointment(BookedAppointment appointment) async {
+    try {
+      // Delete from doctor's bookings collection
+      await FirebaseFirestore.instance
+          .collection('doctors')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .collection('bookings')
+          .doc(appointment.id)
+          .delete();
+
+      // Delete from patient's bookings collection if patientId exists
+      if (appointment.patientId != null && appointment.patientId!.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('patients')
+            .doc(appointment.patientId)
+            .collection('bookings')
+            .doc(appointment.id)
+            .delete();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('Appointment cancelled', 'تم إلغاء الموعد')),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error cancelling appointment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('Error cancelling appointment', 'خطأ في إلغاء الموعد')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showAppointmentDetails(
