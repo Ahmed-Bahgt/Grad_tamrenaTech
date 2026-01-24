@@ -20,7 +20,8 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
   XFile? _image;
   bool _isLoading = false;
   String? _prediction;
-  String? _probability;
+  String? _confidence;
+  String? _heatmapImage;
   String? _error;
 
   Future<void> _pickImage() async {
@@ -31,7 +32,8 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
         setState(() {
           _image = picked;
           _prediction = null;
-          _probability = null;
+          _confidence = null;
+          _heatmapImage = null;
           _error = null;
         });
       }
@@ -51,7 +53,8 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
       _isLoading = true;
       _error = null;
       _prediction = null;
-      _probability = null;
+      _confidence = null;
+      _heatmapImage = null;
     });
     try {
       final uri = Uri.parse('http://192.168.1.66:8000/predict');
@@ -71,7 +74,8 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
         final Map<String, dynamic> data = jsonDecode(body);
         setState(() {
           _prediction = data['prediction']?.toString();
-          _probability = data['raw_probability_percent']?.toString();
+          _confidence = data['confidence']?.toString();
+          _heatmapImage = data['heatmap_image']?.toString();
         });
       } else {
         setState(() {
@@ -112,6 +116,55 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
     if (p.contains('positive')) return 'Fracture Detected';
     if (p.contains('negative')) return 'Normal';
     return 'Result';
+  }
+
+  void _showHeatmapDialog() {
+    if (_heatmapImage == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Dialog(
+          backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Fracture Location Heatmap',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 400),
+                  child: Image.memory(
+                    base64Decode(_heatmapImage!),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00BCD4),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -251,7 +304,7 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
               ],
 
               // Results
-              if (_prediction != null || _probability != null) ...[
+              if (_prediction != null || _confidence != null) ...[
                 const SizedBox(height: 20),
                 Container(
                   padding:
@@ -281,14 +334,32 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
                             color: isDark ? Colors.white : Colors.black,
                           ),
                         ),
-                      if (_probability != null)
+                      if (_confidence != null) ...[
+                        const SizedBox(height: 4),
                         Text(
-                          'Probability: ${_probability!}',
+                          'Confidence: ${_confidence!}',
                           style: TextStyle(
                             fontSize: 16,
                             color: isDark ? Colors.white70 : Colors.black87,
                           ),
                         ),
+                      ],
+                      // Show heatmap button if available
+                      if (_heatmapImage != null) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.image),
+                            label: const Text('View Fracture Location'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _resultColor(),
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: _showHeatmapDialog,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

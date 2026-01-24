@@ -498,6 +498,8 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                               fontSize: 15,
                               color: isDark ? Colors.white : Colors.black87,
                             ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                           const SizedBox(height: 4),
                           Row(
@@ -507,13 +509,16 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                                   color:
                                       isDark ? Colors.white60 : Colors.black54),
                               const SizedBox(width: 4),
-                              Text(
-                                '${_formatTime(slot.timeFrom)} - ${_formatTime(slot.timeTo)}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color:
-                                      isDark ? Colors.white60 : Colors.black54,
-                                  fontWeight: FontWeight.w500,
+                              Expanded(
+                                child: Text(
+                                  '${_formatTime(slot.timeFrom)} - ${_formatTime(slot.timeTo)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color:
+                                        isDark ? Colors.white60 : Colors.black54,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],

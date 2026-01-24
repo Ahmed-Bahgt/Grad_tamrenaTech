@@ -323,6 +323,8 @@ class _PatientCard extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -331,6 +333,8 @@ class _PatientCard extends StatelessWidget {
                         fontSize: 13,
                         color: isDark ? Colors.white60 : Colors.black54,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ],
                 ),

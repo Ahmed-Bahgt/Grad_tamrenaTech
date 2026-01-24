@@ -162,6 +162,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     fontSize: 16,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 8),
                 // Day
@@ -173,11 +175,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       color: isDark ? Colors.white60 : Colors.black54,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      dayLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white60 : Colors.black54,
+                    Expanded(
+                      child: Text(
+                        dayLabel,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -192,11 +197,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       color: isDark ? Colors.white60 : Colors.black54,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      dateLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white60 : Colors.black54,
+                    Expanded(
+                      child: Text(
+                        dateLabel,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -211,11 +219,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       color: isDark ? Colors.white60 : Colors.black54,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      timeLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white60 : Colors.black54,
+                    Expanded(
+                      child: Text(
+                        timeLabel,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -391,6 +402,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   fontSize: 12,
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
               const SizedBox(height: 2),
               Text(
@@ -400,6 +413,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   fontWeight: FontWeight.w500,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
               ),
             ],
           ),
