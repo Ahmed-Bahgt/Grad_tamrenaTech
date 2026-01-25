@@ -58,7 +58,6 @@ class _PatientRegistrationFlowPageState extends State<PatientRegistrationFlowPag
 
     setState(() => _submitting = true);
     try {
-      // دالة التسجيل بالايميل
       final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,

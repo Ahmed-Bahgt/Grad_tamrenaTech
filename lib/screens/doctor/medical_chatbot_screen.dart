@@ -127,7 +127,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
       
       body: Column(
         children: [
-          // منطقة عرض الرسائل (Chat UI)
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -154,7 +153,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
           
           if (_isLoading) const LinearProgressIndicator(),
 
-          // منطقة الإدخال (البيانات الأساسية تظهر فقط في البداية)
           if (_messages.length <= 1)
             Padding(
               padding: const EdgeInsets.all(8.0),
@@ -167,7 +165,6 @@ class _MedicalChatbotScreenState extends State<MedicalChatbotScreen> {
               ),
             ),
 
-          // حقل الدردشة المستمرة
           Padding(
             padding: const EdgeInsets.all(10),
             child: Row(

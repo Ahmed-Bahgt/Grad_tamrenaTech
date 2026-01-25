@@ -4,7 +4,6 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // تعريف classpath لخدمات جوجل (Firebase)
         classpath("com.google.gms:google-services:4.4.0")
     }
 }
@@ -16,7 +15,6 @@ allprojects {
     }
 }
 
-// إعدادات مسار الـ Build لتوفير مساحة في الـ C
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
