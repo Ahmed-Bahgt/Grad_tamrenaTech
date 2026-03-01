@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../utils/theme_provider.dart';
-import '../utils/responsive_utils.dart';
-import '../widgets/custom_app_bar.dart';
+import '../../utils/theme_provider.dart';
+import '../../utils/responsive_utils.dart';
+import '../../widgets/custom_app_bar.dart';
 
 /// Role Selection Screen - Choose between doctor and patient registration
 class RoleSelectionScreen extends StatelessWidget {

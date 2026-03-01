@@ -6,16 +6,16 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 /// X-Ray Analysis Screen - Picks an image and sends to FastAPI
-class XrayComingSoonScreen extends StatefulWidget {
+class XrayScreen extends StatefulWidget {
   final VoidCallback? onBack;
 
-  const XrayComingSoonScreen({super.key, this.onBack});
+  const XrayScreen({super.key, this.onBack});
 
   @override
-  State<XrayComingSoonScreen> createState() => _XrayComingSoonScreenState();
+  State<XrayScreen> createState() => _XrayScreenState();
 }
 
-class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
+class _XrayScreenState extends State<XrayScreen> {
   final ImagePicker _picker = ImagePicker();
   XFile? _image;
   bool _isLoading = false;
@@ -57,7 +57,7 @@ class _XrayComingSoonScreenState extends State<XrayComingSoonScreen> {
       _heatmapImage = null;
     });
     try {
-      final uri = Uri.parse('http://192.168.1.66:8000/predict');
+      final uri = Uri.parse('http://172.20.10.13:8000/predict');
       final request = http.MultipartRequest('POST', uri);
       request.files.add(
         await http.MultipartFile.fromPath(

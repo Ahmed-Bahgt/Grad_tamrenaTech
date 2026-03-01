@@ -15,11 +15,11 @@ import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
 import '../../utils/patient_manager.dart';
 import 'doctor_home_screen.dart';
-import 'doctor_availability_screen.dart';
+import 'set_availability_screen.dart';
 import 'patient_management_screen.dart';
-import 'xray_coming_soon_screen.dart';
+import 'xray_screen.dart';
 import 'medical_chatbot_screen.dart';
-import '../settings_screen.dart';
+import '../common/settings_screen.dart';
 
 /// Doctor Dashboard - Main navigation hub with bottom navigation and menu
 class DoctorDashboard extends StatefulWidget {
@@ -70,7 +70,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       SetAvailabilityScreen(onBack: widget.onBackToWelcome),
       PatientManagementScreen(onBack: widget.onBackToWelcome),
       const MedicalChatbotScreen(),
-      XrayComingSoonScreen(onBack: widget.onBackToWelcome),
+      XrayScreen(onBack: widget.onBackToWelcome),
     ];
   }
 

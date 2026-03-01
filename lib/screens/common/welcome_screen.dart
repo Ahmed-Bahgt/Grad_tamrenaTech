@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../utils/theme_provider.dart';
-import '../utils/responsive_utils.dart';
-import '../widgets/gradient_button.dart';
+import '../../utils/theme_provider.dart';
+import '../../utils/responsive_utils.dart';
+import '../../widgets/gradient_button.dart';
 
 /// Welcome Screen - App entry point with branding and action buttons
 class WelcomeScreen extends StatefulWidget {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/theme_provider.dart';
-import '../utils/responsive_utils.dart';
+import '../../utils/theme_provider.dart';
+import '../../utils/responsive_utils.dart';
 
 // --- SETTINGS SCREEN ---
 class SettingsScreen extends StatefulWidget {

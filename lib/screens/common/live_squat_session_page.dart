@@ -4,9 +4,9 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../utils/squat_logic.dart';
-import '../widgets/pose_painter.dart';
-import '../services/database_service.dart';
+import '../../utils/squat_logic.dart';
+import '../../widgets/pose_painter.dart';
+import '../../services/database_service.dart';
 // Removed unused FirestoreRepository import
 
 /// Live squat session page: camera stream -> ML Kit pose -> SquatLogic -> overlay

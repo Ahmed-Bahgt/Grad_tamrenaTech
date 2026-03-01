@@ -21,8 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.tamren_tech"
-        minSdk = flutter.minSdkVersion // يفضل تثبيته على 21 لدعم أغلب الأجهزة
-        targetSdk = flutter.targetSdkV
+        minSdk = flutter.minSdkVersion 
+        targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

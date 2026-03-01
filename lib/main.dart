@@ -3,17 +3,17 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'utils/theme_provider.dart';
-import 'screens/welcome_screen.dart';
-import 'screens/role_selection_screen.dart';
+import 'screens/common/welcome_screen.dart';
+import 'screens/common/role_selection_screen.dart';
 import 'screens/auth/doctor_registration_flow.dart';
 import 'screens/auth/patient_registration_flow.dart';
-import 'screens/auth/doctor_login.dart';
-import 'screens/auth/patient_login.dart';
+import 'screens/auth/doctor_login_screen.dart';
+import 'screens/auth/patient_login_screen.dart';
 import 'screens/auth/verification_screen.dart';
 import 'screens/auth/success_screen.dart';
 import 'screens/doctor/doctor_dashboard.dart';
 import 'screens/patient/patient_dashboard.dart';
-import 'screens/settings_screen.dart';
+import 'screens/common/settings_screen.dart';
 
 // --- ENUM FOR NAVIGATION ---
 enum Screen {
