@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt --default-timeout=100
 
 # Copy the backend code and the radiology module
 COPY custom_backend/ ./custom_backend/
-COPY "radilogy repoprt generation/" "./radilogy repoprt generation/"
+COPY ["radilogy repoprt generation/", "./radilogy repoprt generation/"]
 
 # Set the working directory to custom_backend so relative paths in main.py work
 WORKDIR /app/custom_backend
