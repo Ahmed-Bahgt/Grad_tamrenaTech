@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/responsive_utils.dart';
 
@@ -45,7 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: isDarkMode ? const Color(0xFF1C1F26) : Colors.white,
+        backgroundColor: AppTheme.bg(isDarkMode),
         elevation: 1,
         automaticallyImplyLeading: true,
         leading: IconButton(
@@ -54,10 +54,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         title: Text(
           t('Settings', 'الإعدادات'),
-          style: TextStyle(fontWeight: FontWeight.bold, color: isDarkMode ? Colors.white : Colors.black87),
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.text(isDarkMode)),
         ),
       ),
-      backgroundColor: isDarkMode ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDarkMode),
       body: Center(
         child: SingleChildScrollView(
           padding: ResponsiveUtils.horizontalPadding(context).copyWith(
@@ -234,12 +234,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
         decoration: BoxDecoration(
           color: backgroundColor ??
-              (isDarkMode ? const Color(0xFF2C2C2C) : Colors.white),
+              (AppTheme.card(isDarkMode)),
           borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(
             color: isDarkMode
-                ? const Color(0xFF00BCD4).withOpacity(0.2)
-                : const Color(0xFF00BCD4).withOpacity(0.1),
+                ? const Color(0xFF00BCD4).withValues(alpha: 0.2)
+                : const Color(0xFF00BCD4).withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -248,7 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Container(
               padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 8)),
               decoration: BoxDecoration(
-                color: const Color(0xFF00BCD4).withOpacity(0.1),
+                color: const Color(0xFF00BCD4).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(ResponsiveUtils.spacing(context, 8)),
               ),
               child: Icon(icon, color: const Color(0xFF00BCD4), size: iconSize),
@@ -263,7 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontSize: ResponsiveUtils.fontSize(context, 15),
                       fontWeight: FontWeight.w600,
-                      color: isDarkMode ? Colors.white : Colors.black87,
+                      color: AppTheme.text(isDarkMode),
                     ),
                   ),
                   if (subtitle != null)
@@ -273,7 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle,
                         style: TextStyle(
                           fontSize: ResponsiveUtils.fontSize(context, 12),
-                          color: isDarkMode ? Colors.grey : Colors.grey[600],
+                          color: AppTheme.sub(isDarkMode),
                         ),
                       ),
                     ),
@@ -312,27 +312,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF00BCD4).withOpacity(0.15)
-              : (isDarkMode ? const Color(0xFF2C2C2C) : Colors.white),
+              ? const Color(0xFF00BCD4).withValues(alpha: 0.15)
+              : (AppTheme.card(isDarkMode)),
           borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF00BCD4)
                 : (isDarkMode
-                    ? const Color(0xFF00BCD4).withOpacity(0.2)
-                    : const Color(0xFF00BCD4).withOpacity(0.1)),
+                    ? const Color(0xFF00BCD4).withValues(alpha: 0.2)
+                    : const Color(0xFF00BCD4).withValues(alpha: 0.1)),
             width: isSelected ? 2 : 1,
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: ResponsiveUtils.fontSize(context, 15),
-                fontWeight: FontWeight.w600,
-                color: isDarkMode ? Colors.white : Colors.black87,
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: ResponsiveUtils.fontSize(context, 15),
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.text(isDarkMode),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             if (isSelected)
@@ -347,10 +350,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDarkMode ? const Color(0xFF161B22) : Colors.white,
+        backgroundColor: AppTheme.card(isDarkMode),
         title: Text(
           t('Your Profile', 'ملفك الشخصي'),
-          style: TextStyle(fontWeight: FontWeight.bold, color: isDarkMode ? Colors.white : Colors.black),
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.text(isDarkMode)),
         ),
         content: SingleChildScrollView(
           child: Column(
@@ -384,7 +387,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              color: AppTheme.sub(isDarkMode),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -394,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: isDarkMode ? Colors.white : Colors.black87,
+              color: AppTheme.text(isDarkMode),
             ),
           ),
           const Divider(height: 8),
@@ -414,10 +417,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context, setState) {
           int step = 0;
           return AlertDialog(
-            backgroundColor: isDarkMode ? const Color(0xFF161B22) : Colors.white,
+            backgroundColor: AppTheme.card(isDarkMode),
             title: Text(
               step == 0 ? t('Verify Current Password', 'تحقق من كلمة المرور الحالية') : t('Set New Password', 'تعيين كلمة مرور جديدة'),
-              style: TextStyle(fontWeight: FontWeight.bold, color: isDarkMode ? Colors.white : Colors.black),
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.text(isDarkMode)),
             ),
             content: SingleChildScrollView(
               child: Column(
@@ -427,10 +430,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     TextField(
                       controller: currentPasswordController,
                       obscureText: true,
-                      style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+                      style: TextStyle(color: AppTheme.text(isDarkMode)),
                       decoration: InputDecoration(
                         labelText: t('Current Password', 'كلمة المرور الحالية'),
-                        labelStyle: TextStyle(color: isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                        labelStyle: TextStyle(color: AppTheme.sub(isDarkMode)),
                         enabledBorder: OutlineInputBorder(
                           borderSide: BorderSide(color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!),
                           borderRadius: BorderRadius.circular(8),
@@ -447,10 +450,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         TextField(
                           controller: newPasswordController,
                           obscureText: true,
-                          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+                          style: TextStyle(color: AppTheme.text(isDarkMode)),
                           decoration: InputDecoration(
                             labelText: t('New Password', 'كلمة مرور جديدة'),
-                            labelStyle: TextStyle(color: isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                            labelStyle: TextStyle(color: AppTheme.sub(isDarkMode)),
                             helperText: t('At least 8 characters', 'على الأقل 8 أحرف'),
                             helperStyle: TextStyle(color: isDarkMode ? Colors.grey[500] : Colors.grey[600]),
                             enabledBorder: OutlineInputBorder(
@@ -467,10 +470,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         TextField(
                           controller: confirmPasswordController,
                           obscureText: true,
-                          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+                          style: TextStyle(color: AppTheme.text(isDarkMode)),
                           decoration: InputDecoration(
                             labelText: t('Confirm Password', 'تأكيد كلمة المرور'),
-                            labelStyle: TextStyle(color: isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                            labelStyle: TextStyle(color: AppTheme.sub(isDarkMode)),
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!),
                               borderRadius: BorderRadius.circular(8),
@@ -541,7 +544,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDarkMode ? const Color(0xFF161B22) : Colors.white,
+        backgroundColor: AppTheme.card(isDarkMode),
         title: Text(t('Edit Display Name', 'تعديل الاسم المعروض')),
         content: TextField(
           controller: controller,

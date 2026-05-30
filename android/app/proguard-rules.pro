@@ -14,3 +14,7 @@
 # Image Picker
 -keep class androidx.lifecycle.** { *; }
 -keep class androidx.core.content.FileProvider { *; }
+
+# MediaPipe
+-dontwarn com.google.mediapipe.proto.CalculatorProfileProto$CalculatorProfile
+-dontwarn com.google.mediapipe.proto.GraphTemplateProto$CalculatorGraphTemplate

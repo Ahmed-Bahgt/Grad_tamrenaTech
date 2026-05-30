@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../utils/theme_provider.dart';
@@ -57,11 +57,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     super.dispose();
   }
 
-  // Accent color helpers: green in light mode, light blue in dark mode
-  Color _accentColor(bool isDark) =>
-      isDark ? const Color(0xFF64B5F6) : const Color(0xFF8BC34A);
-  Color _accentAltColor(bool isDark) =>
-      isDark ? const Color(0xFF42A5F5) : const Color(0xFF7CB342);
+  // Accent color helpers: use AppTheme.cyan consistently
+  Color _accentColor(bool isDark) => AppTheme.cyan;
+  Color _accentAltColor(bool isDark) => AppTheme.cyan;
 
   @override
   Widget build(BuildContext context) {
@@ -72,8 +70,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
     return Scaffold(
       appBar: CustomAppBar(title: t('Home', 'الرئيسية'), onBack: widget.onBack),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       body: SafeArea(
         child: SingleChildScrollView(
           padding:
@@ -196,7 +193,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           style: TextStyle(
             fontSize: ResponsiveUtils.fontSize(context, 18),
             fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black87,
+            color: AppTheme.text(isDark),
           ),
         ),
         SizedBox(height: ResponsiveUtils.spacing(context, 12)),
@@ -205,18 +202,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             padding: EdgeInsets.symmetric(
               vertical: ResponsiveUtils.spacing(context, 24),
             ),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey[300]!,
-              ),
-            ),
+            decoration: AppTheme.cardDeco(isDark, radius: 12),
             child: Center(
               child: Text(
                 t('No upcoming appointments', 'لا توجد مواعيد قادمة'),
                 style: TextStyle(
-                  color: isDark ? Colors.white54 : Colors.black54,
+                  color: AppTheme.sub(isDark),
                   fontSize: ResponsiveUtils.fontSize(context, 14),
                 ),
               ),
@@ -249,20 +240,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     return Container(
       margin: EdgeInsets.only(bottom: ResponsiveUtils.spacing(context, 12)),
       padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 16)),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161B22) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.white12 : Colors.grey[300]!,
-        ),
-      ),
+      decoration: AppTheme.cardDeco(isDark, radius: 12),
       child: Row(
         children: [
           Container(
             width: ResponsiveUtils.isMobile(context) ? 40 : 50,
             height: ResponsiveUtils.isMobile(context) ? 40 : 50,
             decoration: BoxDecoration(
-              color: _accentColor(isDark).withOpacity(0.2),
+              color: _accentColor(isDark).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(
@@ -286,7 +271,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         style: TextStyle(
                           fontSize: ResponsiveUtils.fontSize(context, 16),
                           fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : Colors.black87,
+                          color: AppTheme.text(isDark),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -303,15 +288,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                                 : booking.status == 'completed'
                                     ? _accentColor(isDark)
                                     : _accentAltColor(isDark))
-                            .withOpacity(0.12),
+                            .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: booking.status == 'cancelled'
-                              ? Colors.redAccent.withOpacity(0.6)
+                              ? Colors.redAccent.withValues(alpha: 0.6)
                               : (booking.status == 'completed'
                                       ? _accentColor(isDark)
                                       : _accentAltColor(isDark))
-                                  .withOpacity(0.6),
+                                  .withValues(alpha: 0.6),
                         ),
                       ),
                       child: Text(
@@ -334,7 +319,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   booking.specialty,
                   style: TextStyle(
                     fontSize: ResponsiveUtils.fontSize(context, 12),
-                    color: isDark ? Colors.white60 : Colors.black54,
+                    color: AppTheme.sub(isDark),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -372,7 +357,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             tooltip: t('Cancel booking', 'إلغاء الحجز'),
             icon: Icon(
               Icons.delete_outline,
-              color: isDark ? Colors.white70 : Colors.black45,
+              color: AppTheme.sub(isDark),
               size: ResponsiveUtils.iconSize(context, 20),
             ),
             onPressed: () => _confirmCancelBooking(booking),
@@ -435,7 +420,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           Icon(
             icon,
             size: ResponsiveUtils.iconSize(context, 14),
-            color: isDark ? Colors.white70 : Colors.black54,
+            color: AppTheme.sub(isDark),
           ),
           SizedBox(width: ResponsiveUtils.spacing(context, 6)),
           Text(
@@ -443,7 +428,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             style: TextStyle(
               fontSize: ResponsiveUtils.fontSize(context, 12),
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
+              color: AppTheme.text(isDark),
             ),
           ),
         ],
@@ -452,7 +437,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildMedicalPlanSection(BuildContext context, bool isDark) {
-    final activePlan = _plansManager.activePlan;
+    // Pull the actual assigned plan from the profile manager (synced with the
+    // doctor's ExerciseBuilder via Firestore). The MedicalPlansManager dummy
+    // data is no longer used here.
+    final planName = _profileManager.activePlanName;
+    final exerciseType = _profileManager.activeExerciseType;
+    final completed = _profileManager.completedSessions;
+    final total = _profileManager.totalSessions;
+    final progress = _profileManager.progressPercent;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,27 +454,22 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           style: TextStyle(
             fontSize: ResponsiveUtils.fontSize(context, 18),
             fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black87,
+            color: AppTheme.text(isDark),
           ),
         ),
         SizedBox(height: ResponsiveUtils.spacing(context, 12)),
-        if (activePlan == null)
+        if (planName == null)
           Container(
             padding: EdgeInsets.symmetric(
               vertical: ResponsiveUtils.spacing(context, 24),
             ),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey[300]!,
-              ),
-            ),
+            decoration: AppTheme.cardDeco(isDark, radius: 12),
             child: Center(
               child: Text(
-                t('No active medical plan', 'لا توجد خطة طبية نشطة'),
+                t('No plan assigned by your doctor yet',
+                    'لم يحدد طبيبك خطة بعد'),
                 style: TextStyle(
-                  color: isDark ? Colors.white54 : Colors.black54,
+                  color: AppTheme.sub(isDark),
                   fontSize: ResponsiveUtils.fontSize(context, 14),
                 ),
               ),
@@ -491,13 +478,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         else
           Container(
             padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 20)),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey[300]!,
-              ),
-            ),
+            decoration: AppTheme.cardDeco(isDark, radius: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -509,55 +490,61 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            activePlan.name,
+                            planName,
                             style: TextStyle(
                               fontSize: ResponsiveUtils.fontSize(context, 16),
                               fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
+                              color: AppTheme.text(isDark),
                             ),
                           ),
-                          SizedBox(height: ResponsiveUtils.spacing(context, 4)),
-                          Text(
-                            '${t('Session', 'الجلسة')} ${activePlan.completedSessions}/${activePlan.totalSessions}',
-                            style: TextStyle(
-                              fontSize: ResponsiveUtils.fontSize(context, 12),
-                              color: isDark ? Colors.white60 : Colors.black54,
+                          if (total > 0) ...[
+                            SizedBox(height: ResponsiveUtils.spacing(context, 4)),
+                            Text(
+                              '${t('Session', 'الجلسة')} $completed/$total',
+                              style: TextStyle(
+                                fontSize: ResponsiveUtils.fontSize(context, 12),
+                                color: AppTheme.sub(isDark),
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: ResponsiveUtils.spacing(context, 12),
-                        vertical: ResponsiveUtils.spacing(context, 6),
-                      ),
-                      decoration: BoxDecoration(
-                        color: _accentColor(isDark).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${activePlan.calculatedProgress.toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          color: _accentColor(isDark),
-                          fontWeight: FontWeight.bold,
+                    if (total > 0)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: ResponsiveUtils.spacing(context, 12),
+                          vertical: ResponsiveUtils.spacing(context, 6),
+                        ),
+                        decoration: BoxDecoration(
+                          color: _accentColor(isDark).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${progress.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: _accentColor(isDark),
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
-                SizedBox(height: ResponsiveUtils.spacing(context, 16)),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: activePlan.calculatedProgress / 100,
-                    minHeight: 8,
-                    backgroundColor: isDark ? Colors.white12 : Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _accentColor(isDark),
+                if (total > 0) ...[
+                  SizedBox(height: ResponsiveUtils.spacing(context, 16)),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress / 100,
+                      minHeight: 8,
+                      backgroundColor:
+                          isDark ? Colors.white12 : Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        _accentColor(isDark),
+                      ),
                     ),
                   ),
-                ),
+                ],
                 SizedBox(height: ResponsiveUtils.spacing(context, 16)),
                 SizedBox(
                   width: double.infinity,
@@ -573,7 +560,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (context) => StartSessionScreen(
-                            planName: activePlan.name,
+                            planName: planName,
+                            exerciseType: exerciseType,
                             onBack: () => Navigator.pop(context),
                           ),
                         ),
@@ -610,32 +598,26 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             style: TextStyle(
               fontSize: ResponsiveUtils.fontSize(context, 18),
               fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
+              color: AppTheme.text(isDark),
             ),
           ),
           SizedBox(height: ResponsiveUtils.spacing(context, 12)),
           Container(
             padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 16)),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey[300]!,
-              ),
-            ),
+            decoration: AppTheme.cardDeco(isDark, radius: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Icon(
                   Icons.note_outlined,
                   size: ResponsiveUtils.iconSize(context, 40),
-                  color: isDark ? Colors.white30 : Colors.grey[400],
+                  color: AppTheme.sub(isDark).withValues(alpha: 0.5),
                 ),
                 SizedBox(height: ResponsiveUtils.spacing(context, 12)),
                 Text(
                   t('No notes yet', 'لا توجد ملاحظات بعد'),
                   style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.black54,
+                    color: AppTheme.sub(isDark),
                     fontSize: ResponsiveUtils.fontSize(context, 14),
                     fontWeight: FontWeight.w500,
                   ),
@@ -645,7 +627,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   t('Your doctor will add notes here after reviewing your progress',
                       'سيضيف طبيبك ملاحظاته هنا بعد مراجعة تقدمك'),
                   style: TextStyle(
-                    color: isDark ? Colors.white30 : Colors.grey[500],
+                    color: AppTheme.sub(isDark).withValues(alpha: 0.6),
                     fontSize: ResponsiveUtils.fontSize(context, 12),
                   ),
                   textAlign: TextAlign.center,
@@ -666,19 +648,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           style: TextStyle(
             fontSize: ResponsiveUtils.fontSize(context, 18),
             fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black87,
+            color: AppTheme.text(isDark),
           ),
         ),
         SizedBox(height: ResponsiveUtils.spacing(context, 12)),
         Container(
           padding: EdgeInsets.all(ResponsiveUtils.spacing(context, 16)),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF161B22) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? Colors.white12 : Colors.grey[300]!,
-            ),
-          ),
+          decoration: AppTheme.cardDeco(isDark, radius: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -687,8 +663,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     EdgeInsets.only(top: ResponsiveUtils.spacing(context, 4)),
                 width: 6,
                 height: 6,
-                decoration: BoxDecoration(
-                  color: _accentColor(isDark),
+                decoration: const BoxDecoration(
+                  color: AppTheme.cyan,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -697,7 +673,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 child: Text(
                   doctorNotes,
                   style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
+                    color: AppTheme.text(isDark),
                     height: 1.6,
                     fontSize: ResponsiveUtils.fontSize(context, 14),
                   ),

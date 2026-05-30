@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
-/// Custom painter to draw pose skeleton and reference lines/angles
+/// Custom painter to draw pose skeleton and reference lines/angles.
+///
+/// Two modes:
+///  - Side view (Squat): draws one half of the body (left or right) selected
+///    by [selectedSide]. Used together with [hipAngle] / [kneeAngle] /
+///    [ankleAngle] for the squat angle labels.
+///  - Front view (Abduction, Internal Rotation, Lateral Raise, custom
+///    front-view): draws the full upper body (both arms + torso + hips)
+///    bilaterally. [selectedSide] is ignored.
 class PosePainter extends CustomPainter {
   final List<Pose> poses;
   final Size imageSize;
@@ -9,7 +17,8 @@ class PosePainter extends CustomPainter {
   final double? kneeAngle;
   final double? ankleAngle;
   final bool drawReferences;
-  final String? selectedSide; // 'left' or 'right'
+  final String? selectedSide; // 'left' or 'right' (side view only)
+  final String view; // 'front' or 'side'
 
   PosePainter({
     required this.poses,
@@ -19,6 +28,7 @@ class PosePainter extends CustomPainter {
     this.ankleAngle,
     this.drawReferences = false,
     this.selectedSide,
+    this.view = 'side',
   });
 
   @override
@@ -28,11 +38,9 @@ class PosePainter extends CustomPainter {
     final pose = poses.first;
     final landmarks = pose.landmarks;
 
-    // Calculate scale factors
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
 
-    // Paints
     final landmarkPaint = Paint()
       ..color = Colors.yellow
       ..style = PaintingStyle.fill;
@@ -47,47 +55,77 @@ class PosePainter extends CustomPainter {
       ..strokeWidth = 4
       ..style = PaintingStyle.stroke;
 
-    // Draw connections first (so they appear behind landmarks)
-    _drawConnections(canvas, landmarks, scaleX, scaleY, connectionPaint);
-
-    // Draw only focused landmarks based on selected side
-    if (selectedSide != null) {
-      // Draw exactly 7 joints: shoulder, elbow, wrist, hip, knee, ankle, toe (footIndex)
-      final side = selectedSide == 'left'
-          ? [
-              PoseLandmarkType.leftShoulder,
-              PoseLandmarkType.leftElbow,
-              PoseLandmarkType.leftWrist,
-              PoseLandmarkType.leftHip,
-              PoseLandmarkType.leftKnee,
-              PoseLandmarkType.leftAnkle,
-              PoseLandmarkType.leftFootIndex,
-            ]
-          : [
-              PoseLandmarkType.rightShoulder,
-              PoseLandmarkType.rightElbow,
-              PoseLandmarkType.rightWrist,
-              PoseLandmarkType.rightHip,
-              PoseLandmarkType.rightKnee,
-              PoseLandmarkType.rightAnkle,
-              PoseLandmarkType.rightFootIndex,
-            ];
-
-      for (final type in side) {
-        final landmark = landmarks[type];
-        if (landmark == null) continue;
-        final x = landmark.x * scaleX;
-        final y = landmark.y * scaleY;
-        canvas.drawCircle(Offset(x, y), 6, landmarkPaint);
+    if (view == 'front') {
+      _drawFrontConnections(canvas, landmarks, scaleX, scaleY, connectionPaint);
+      _drawFrontLandmarks(canvas, landmarks, scaleX, scaleY, landmarkPaint);
+    } else {
+      _drawSideConnections(canvas, landmarks, scaleX, scaleY, connectionPaint);
+      _drawSideLandmarks(canvas, landmarks, scaleX, scaleY, landmarkPaint);
+      if (drawReferences) {
+        _drawReferenceLinesAndAngles(canvas, size, landmarks, scaleX, scaleY, refPaint);
       }
-    }
-
-    if (drawReferences) {
-      _drawReferenceLinesAndAngles(canvas, size, landmarks, scaleX, scaleY, refPaint);
     }
   }
 
-  void _drawConnections(
+  // ── Front view: bilateral upper body ────────────────────────────────────
+  void _drawFrontConnections(
+    Canvas canvas,
+    Map<PoseLandmarkType, PoseLandmark> lm,
+    double scaleX,
+    double scaleY,
+    Paint paint,
+  ) {
+    const connections = [
+      // Shoulders + arms (both sides)
+      [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
+      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
+      [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
+      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
+      [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
+      // Torso
+      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
+      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
+      [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
+    ];
+
+    for (final c in connections) {
+      final start = lm[c[0]];
+      final end = lm[c[1]];
+      if (start == null || end == null) continue;
+      canvas.drawLine(
+        Offset(start.x * scaleX, start.y * scaleY),
+        Offset(end.x * scaleX, end.y * scaleY),
+        paint,
+      );
+    }
+  }
+
+  void _drawFrontLandmarks(
+    Canvas canvas,
+    Map<PoseLandmarkType, PoseLandmark> lm,
+    double scaleX,
+    double scaleY,
+    Paint paint,
+  ) {
+    const types = [
+      PoseLandmarkType.leftShoulder,
+      PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.leftElbow,
+      PoseLandmarkType.rightElbow,
+      PoseLandmarkType.leftWrist,
+      PoseLandmarkType.rightWrist,
+      PoseLandmarkType.leftHip,
+      PoseLandmarkType.rightHip,
+    ];
+    for (final type in types) {
+      final p = lm[type];
+      if (p == null) continue;
+      canvas.drawCircle(Offset(p.x * scaleX, p.y * scaleY), 6, paint);
+    }
+  }
+
+  // ── Side view: one half of body, used for squats ────────────────────────
+  void _drawSideConnections(
     Canvas canvas,
     Map<PoseLandmarkType, PoseLandmark> landmarks,
     double scaleX,
@@ -96,23 +134,18 @@ class PosePainter extends CustomPainter {
   ) {
     if (selectedSide == null) return;
 
-    // Only draw connections for the selected side
     final connections = selectedSide == 'left'
-        ? [
-            // Left arm
+        ? const [
             [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
             [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
-            // Left leg
             [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
             [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
             [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
             [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
           ]
-        : [
-            // Right arm
+        : const [
             [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
             [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
-            // Right leg
             [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
             [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
             [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
@@ -122,19 +155,52 @@ class PosePainter extends CustomPainter {
     for (final connection in connections) {
       final start = landmarks[connection[0]];
       final end = landmarks[connection[1]];
-
       if (start != null && end != null) {
-        final startX = start.x * scaleX;
-        final startY = start.y * scaleY;
-        final endX = end.x * scaleX;
-        final endY = end.y * scaleY;
-
         canvas.drawLine(
-          Offset(startX, startY),
-          Offset(endX, endY),
+          Offset(start.x * scaleX, start.y * scaleY),
+          Offset(end.x * scaleX, end.y * scaleY),
           paint,
         );
       }
+    }
+  }
+
+  void _drawSideLandmarks(
+    Canvas canvas,
+    Map<PoseLandmarkType, PoseLandmark> landmarks,
+    double scaleX,
+    double scaleY,
+    Paint paint,
+  ) {
+    if (selectedSide == null) return;
+    final side = selectedSide == 'left'
+        ? const [
+            PoseLandmarkType.leftShoulder,
+            PoseLandmarkType.leftElbow,
+            PoseLandmarkType.leftWrist,
+            PoseLandmarkType.leftHip,
+            PoseLandmarkType.leftKnee,
+            PoseLandmarkType.leftAnkle,
+            PoseLandmarkType.leftFootIndex,
+          ]
+        : const [
+            PoseLandmarkType.rightShoulder,
+            PoseLandmarkType.rightElbow,
+            PoseLandmarkType.rightWrist,
+            PoseLandmarkType.rightHip,
+            PoseLandmarkType.rightKnee,
+            PoseLandmarkType.rightAnkle,
+            PoseLandmarkType.rightFootIndex,
+          ];
+
+    for (final type in side) {
+      final landmark = landmarks[type];
+      if (landmark == null) continue;
+      canvas.drawCircle(
+        Offset(landmark.x * scaleX, landmark.y * scaleY),
+        6,
+        paint,
+      );
     }
   }
 
@@ -167,7 +233,6 @@ class PosePainter extends CustomPainter {
     final kneeX = knee.x * scaleX;
     final ankleX = ankle.x * scaleX;
 
-    // Angle labels near joints
     const textStyle = TextStyle(
       color: Colors.lightGreenAccent,
       fontSize: 16,
@@ -197,6 +262,7 @@ class PosePainter extends CustomPainter {
         oldDelegate.kneeAngle != kneeAngle ||
         oldDelegate.ankleAngle != ankleAngle ||
         oldDelegate.drawReferences != drawReferences ||
-        oldDelegate.selectedSide != selectedSide;
+        oldDelegate.selectedSide != selectedSide ||
+        oldDelegate.view != view;
   }
 }

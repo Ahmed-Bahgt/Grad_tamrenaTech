@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/radiology_report.dart';
+import '../models/exercise_program.dart';
 import '../utils/squat_logic.dart';
 
 /// Centralized Firestore operations for roles, slots, and workout logging.
@@ -33,13 +35,14 @@ class DatabaseService {
     }, SetOptions(merge: true));
   }
 
-  /// Save doctor profile in `doctors/{uid}` with isVerified flag.
+  /// Save doctor profile in `doctors/{uid}` with isVerified and approvalStatus flags.
   Future<void> saveDoctorProfile({
     required String uid,
     required String fullName,
     required String phone,
     required String email,
     String? degree,
+    String? graduationDate,
     String? certificateUrl,
     String? additionalQualifications,
     String? firstName,
@@ -51,12 +54,15 @@ class DatabaseService {
       'phone': phone,
       'email': email,
       'degree': degree,
+      if (graduationDate != null && graduationDate.isNotEmpty) 'graduationDate': graduationDate,
       'certificateUrl': certificateUrl,
       'additionalQualifications': additionalQualifications,
       if (firstName != null) 'firstName': firstName,
       if (lastName != null) 'lastName': lastName,
       if (qualifications != null) 'qualifications': qualifications,
       'isVerified': false,
+      'approvalStatus': 'pending', // pending | rejected | approved
+      'submittedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -102,17 +108,44 @@ class DatabaseService {
     });
   }
 
-  /// Log a workout session under `users/{uid}/workouts/{autoId}`.
+  /// Save a radiology report under `patients/{patientId}/radiology_reports/{autoId}`.
+  Future<String> saveRadiologyReport({
+    required String patientId,
+    required RadiologyReport report,
+  }) async {
+    final doc = await _db
+        .collection('patients')
+        .doc(patientId)
+        .collection('radiology_reports')
+        .add(report.toFirestore());
+    return doc.id;
+  }
+
+  /// Save (or overwrite) an exercise program on a patient document.
+  /// Stored as `patients/{patientId}.assignedProgram` (a map, not a subcollection).
+  Future<void> saveExerciseProgram({
+    required String patientId,
+    required ExerciseProgram program,
+  }) async {
+    await _db.collection('patients').doc(patientId).set(
+      {'assignedProgram': program.toFirestore()},
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Log a workout session under `patients/{uid}/Sessions/{autoId}`.
   Future<void> logWorkout({
     required SquatResult result,
     int? targetSets,
   }) async {
     final user = _auth.currentUser;
-    if (user == null) return; // Skip if not signed in
+    if (user == null) return;
+    final data = result.toWorkoutMap(targetSets: targetSets)
+      ..['timestamp'] = FieldValue.serverTimestamp();
     await _db
-        .collection('users')
+        .collection('patients')
         .doc(user.uid)
-        .collection('workouts')
-        .add(result.toWorkoutMap(targetSets: targetSets));
+        .collection('Sessions')
+        .add(data);
   }
 }

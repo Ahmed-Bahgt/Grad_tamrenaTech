@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/availability_manager.dart';
 import '../../utils/patient_manager.dart';
+import '../../utils/dev_mode_service.dart';
 import 'doctor_home_screen.dart';
 import 'set_availability_screen.dart';
 import 'patient_management_screen.dart';
@@ -40,7 +41,13 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   @override
   void initState() {
     super.initState();
-    _syncAllDataFromFirestore();
+    if (DevModeService().isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) DevModeService().refreshDoctorData();
+      });
+    } else {
+      _syncAllDataFromFirestore();
+    }
   }
 
   /// Sync all doctor data from Firestore on app startup
@@ -66,19 +73,18 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   List<Widget> _getScreens() {
     return [
       DoctorHomeScreen(
-          onBack: widget.onBackToWelcome, onNavigateToTab: _onNavItemTapped),
-      SetAvailabilityScreen(onBack: widget.onBackToWelcome),
-      PatientManagementScreen(onBack: widget.onBackToWelcome),
+          onBack: null, onNavigateToTab: _onNavItemTapped),
+      SetAvailabilityScreen(onBack: () => _onNavItemTapped(0)),
+      PatientManagementScreen(onBack: () => _onNavItemTapped(0)),
       const MedicalChatbotScreen(),
-      XrayScreen(onBack: widget.onBackToWelcome),
+      XrayScreen(onBack: () => _onNavItemTapped(0)),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor =
-        isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC);
+    final backgroundColor = AppTheme.bg(isDark);
     final screens = _getScreens();
 
     return Scaffold(
@@ -90,7 +96,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
             top: 12,
             right: 12,
             child: PopupMenuButton<String>(
-              color: isDark ? const Color(0xFF161B22) : Colors.white,
+              color: AppTheme.card(isDark),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               onSelected: (value) {
@@ -121,7 +127,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       const SizedBox(width: 12),
                       Text('Settings',
                           style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black)),
+                              color: AppTheme.text(isDark))),
                     ],
                   ),
                 ),
@@ -142,7 +148,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                             ? 'Light Mode'
                             : 'Dark Mode',
                         style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black),
+                            color: AppTheme.text(isDark)),
                       ),
                     ],
                   ),
@@ -156,7 +162,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       const SizedBox(width: 12),
                       Text('Language',
                           style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black)),
+                              color: AppTheme.text(isDark))),
                     ],
                   ),
                 ),
@@ -174,7 +180,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                  color: AppTheme.card(isDark),
                   border: Border.all(color: const Color(0xFF00BCD4), width: 1),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -189,9 +195,9 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
         currentIndex: _selectedIndex,
         onTap: _onNavItemTapped,
         type: BottomNavigationBarType.fixed,
-        backgroundColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-        selectedItemColor: const Color(0xFF00BCD4),
-        unselectedItemColor: Colors.grey,
+        backgroundColor: AppTheme.card(isDark),
+        selectedItemColor: AppTheme.cyan,
+        unselectedItemColor: AppTheme.sub(isDark),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -223,7 +229,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF161B22) : Colors.white,
+        backgroundColor: AppTheme.card(isDark),
         title: const Text('Select Language'),
         content: Column(
           mainAxisSize: MainAxisSize.min,

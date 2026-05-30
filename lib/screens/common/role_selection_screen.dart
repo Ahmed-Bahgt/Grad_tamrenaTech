@@ -20,7 +20,7 @@ class RoleSelectionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: CustomAppBar(title: t('Choose Your Role', 'اختر دورك'), onBack: onBack),
       body: Center(
         child: ConstrainedBox(
@@ -36,12 +36,12 @@ class RoleSelectionScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 Text(
-                  t('Are you registering as a Doctor or a Patient?',
-                      'هل تسجل كطبيب أم كمريض؟'),
+                  t('Are you registering as a Doctor or Patient?',
+                    'هل تسجل كطبيب أم كمريض؟'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: ResponsiveUtils.fontSize(context, 18),
-                      color: isDark ? Colors.white70 : Colors.black54),
+                      color: AppTheme.sub(isDark)),
                 ),
                 SizedBox(height: ResponsiveUtils.verticalSpacing(context, 40)),
                 Expanded(
@@ -129,7 +129,7 @@ class RoleCard extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF161B22) : Colors.white,
+          color: AppTheme.card(isDark),
           borderRadius: BorderRadius.circular(borderRadius),
           border: Border.all(color: colorWithOpacity(color, 0.5), width: 2),
           boxShadow: [

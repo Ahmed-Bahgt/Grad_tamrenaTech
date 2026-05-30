@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'theme_provider.dart';
 
 /// Singleton class to manage patients across screens
 class PatientManager extends ChangeNotifier {
@@ -15,6 +16,7 @@ class PatientManager extends ChangeNotifier {
     _loadPatientsFromFirestore();
     // Ensure patient lists are scoped to the signed-in doctor
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (appDevMode) return;
       if (user == null) {
         _myPatients.clear();
         _allPatients.clear();
@@ -37,6 +39,7 @@ class PatientManager extends ChangeNotifier {
 
   /// Load both assigned and all available patients from Firestore
   Future<void> _loadPatientsFromFirestore() async {
+    if (appDevMode) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       _myPatients.clear();
@@ -63,6 +66,7 @@ class PatientManager extends ChangeNotifier {
         final data = doc.data();
         final firstName = data['firstName'] as String? ?? '';
         final lastName = data['lastName'] as String? ?? '';
+        final assignedDoctorId = data['assignedDoctorId'] as String? ?? '';
         final patientName = firstName.isNotEmpty && lastName.isNotEmpty
             ? '$firstName $lastName'
             : data['fullName'] as String? ?? 'Patient';
@@ -71,23 +75,32 @@ class PatientManager extends ChangeNotifier {
           id: doc.id,
           name: patientName,
           diagnosis: data['diagnosis'] as String? ?? 'Rehabilitation',
-          progress: (data['progress'] as num?)?.toDouble() ?? 0.0,
+          progress: ((data['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0),
           phone: data['phone'] as String? ?? '',
           email: data['email'] as String? ?? '',
           assignedPlan: data['assignedPlan'] as String? ?? '',
           assignedMode: data['assignedMode'] as String? ?? '',
           notes: data['notes'] as String? ?? '',
-          lastSession: data['lastSession'] as String? ?? '',
-          nextAppointment: data['nextAppointment'] as String? ?? '',
+          lastSession: data['lastSession'] is Timestamp ? (data['lastSession'] as Timestamp).toDate().toString().split(' ')[0] : data['lastSession']?.toString() ?? '',
+          nextAppointment: data['nextAppointment'] is Timestamp ? (data['nextAppointment'] as Timestamp).toDate().toString().split(' ')[0] : data['nextAppointment']?.toString() ?? '',
           sessions: (data['sessions'] as num?)?.toInt() ?? 0,
           completedSessions: (data['completedSessions'] as num?)?.toInt() ?? 0,
           sets: (data['sets'] as num?)?.toInt() ?? 3,
           reps: (data['reps'] as num?)?.toInt() ?? 10,
+          assignedDoctorId: assignedDoctorId,
+          medicalHistory: MedicalHistoryData.fromMap(
+            data['medicalHistory'] is Map
+                ? Map<String, dynamic>.from(data['medicalHistory'] as Map)
+                : null,
+          ),
+          prescriptions: (data['prescriptions'] as List<dynamic>? ?? [])
+              .whereType<Map>()
+              .map((item) => TreatmentPrescription.fromMap(
+                  Map<String, dynamic>.from(item)))
+              .toList(),
         );
 
         // Check if assigned to current doctor or anyone else
-        final assignedDoctorId = data['assignedDoctorId'] as String? ?? '';
-
         if (assignedDoctorId == user.uid) {
           // Patient assigned to current doctor - add to myPatients
           _myPatients.add(patient);
@@ -104,6 +117,21 @@ class PatientManager extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Seed in-memory data for dev/test mode (no Firebase needed)
+  void loadDevModeData({
+    required List<PatientData> myPatients,
+    required List<PatientData> allPatients,
+  }) {
+    _myPatients
+      ..clear()
+      ..addAll(myPatients);
+    _allPatients
+      ..clear()
+      ..addAll(allPatients);
+    _isLoading = false;
+    notifyListeners();
   }
 
   /// Reload patients from Firestore
@@ -134,7 +162,7 @@ class PatientManager extends ChangeNotifier {
 
       // Update local lists
       if (!_myPatients.any((p) => p.id == patient.id)) {
-        _myPatients.add(patient);
+        _myPatients.add(patient.copyWith(assignedDoctorId: user.uid));
       }
       // Remove from allPatients since it's now assigned
       _allPatients.removeWhere((p) => p.id == patient.id);
@@ -146,6 +174,18 @@ class PatientManager extends ChangeNotifier {
 
   /// Remove patient from current doctor's care (save to Firestore)
   Future<void> removeFromMyCare(PatientData patient) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    debugPrint(
+        '[PatientManager] removeFromMyCare called for patient ${patient.id} (${patient.name}) by doctor ${user.uid}');
+
+    if (patient.assignedDoctorId != user.uid && patient.assignedDoctorId.isNotEmpty) {
+      debugPrint(
+          '[PatientManager] WARNING: Doctor ${user.uid} tried to remove patient ${patient.id} who is assigned to ${patient.assignedDoctorId}. Aborting.');
+      return;
+    }
+
     try {
       // Set assignedDoctorId to empty string in Firestore
       await FirebaseFirestore.instance
@@ -157,7 +197,7 @@ class PatientManager extends ChangeNotifier {
       _myPatients.removeWhere((p) => p.id == patient.id);
       // Add back to allPatients since it's now unassigned
       if (!_allPatients.any((p) => p.id == patient.id)) {
-        _allPatients.add(patient);
+        _allPatients.add(patient.copyWith(assignedDoctorId: ''));
       }
       notifyListeners();
     } catch (e) {
@@ -181,24 +221,48 @@ class PatientManager extends ChangeNotifier {
           .doc(patientId)
           .update({'assignedDoctorId': user.uid});
 
-      // Find in allPatients and add to myPatients
-      final patient = _allPatients.firstWhere(
-        (p) => p.id == patientId,
-        orElse: () => PatientData(
+      // Find in allPatients; if missing, fetch from Firestore for full data
+      PatientData patient;
+      final cached = _allPatients.where((p) => p.id == patientId);
+      if (cached.isNotEmpty) {
+        patient = cached.first;
+      } else {
+        final doc = await FirebaseFirestore.instance
+            .collection('patients')
+            .doc(patientId)
+            .get();
+        final data = doc.data() ?? {};
+        final firstName = data['firstName'] as String? ?? '';
+        final lastName  = data['lastName']  as String? ?? '';
+        final fullName  = firstName.isNotEmpty && lastName.isNotEmpty
+            ? '$firstName $lastName'
+            : data['fullName'] as String? ?? patientName;
+        patient = PatientData(
           id: patientId,
-          name: patientName,
-          diagnosis: 'Rehabilitation',
-          progress: 0.0,
-          phone: '',
-          email: '',
-          assignedPlan: '',
-          assignedMode: '',
-          notes: '',
-          lastSession: '',
-          nextAppointment: '',
-          completedSessions: 0,
-        ),
-      );
+          name: fullName,
+          diagnosis: data['diagnosis'] as String? ?? 'Rehabilitation',
+          progress: ((data['progress'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0),
+          phone: data['phone'] as String? ?? '',
+          email: data['email'] as String? ?? '',
+          assignedPlan: data['assignedPlan'] as String? ?? '',
+          assignedMode: data['assignedMode'] as String? ?? '',
+          notes: data['notes'] as String? ?? '',
+          lastSession: data['lastSession'] is Timestamp ? (data['lastSession'] as Timestamp).toDate().toString().split(' ')[0] : data['lastSession']?.toString() ?? '',
+          nextAppointment: data['nextAppointment'] is Timestamp ? (data['nextAppointment'] as Timestamp).toDate().toString().split(' ')[0] : data['nextAppointment']?.toString() ?? '',
+          completedSessions: (data['completedSessions'] as num?)?.toInt() ?? 0,
+          assignedDoctorId: user.uid,
+          medicalHistory: MedicalHistoryData.fromMap(
+            data['medicalHistory'] is Map
+                ? Map<String, dynamic>.from(data['medicalHistory'] as Map)
+                : null,
+          ),
+          prescriptions: (data['prescriptions'] as List<dynamic>? ?? [])
+              .whereType<Map>()
+              .map((item) => TreatmentPrescription.fromMap(
+                  Map<String, dynamic>.from(item)))
+              .toList(),
+        );
+      }
 
       if (!_myPatients.any((p) => p.id == patientId)) {
         _myPatients.add(patient);
@@ -276,11 +340,150 @@ class PatientManager extends ChangeNotifier {
         'progress': updatedPatient.calculatedProgress,
         'lastSession': updatedPatient.lastSession,
         'nextAppointment': updatedPatient.nextAppointment,
+        'medicalHistory': updatedPatient.medicalHistory.toMap(),
+        'prescriptions':
+            updatedPatient.prescriptions.map((item) => item.toMap()).toList(),
       });
       debugPrint('Patient ${updatedPatient.id} updated in Firestore');
     } catch (e) {
       debugPrint('Error updating patient in Firestore: $e');
     }
+  }
+
+  Future<void> saveMedicalHistory(
+      PatientData patient, MedicalHistoryData history) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('No authenticated doctor');
+    }
+
+    await _assertDoctorAssignedToPatient(patient.id, user.uid);
+    final doctorName = await _resolveDoctorName(user.uid, user.email);
+    final stamped = history.copyWith(
+      updatedByDoctorId: user.uid,
+      updatedByDoctorName: doctorName,
+      updatedAt: DateTime.now(),
+    );
+
+    await FirebaseFirestore.instance
+        .collection('patients')
+        .doc(patient.id)
+        .update({
+      'medicalHistory': stamped.toMap(),
+    });
+
+    final myIndex = _myPatients.indexWhere((p) => p.id == patient.id);
+    if (myIndex != -1) {
+      _myPatients[myIndex] = _myPatients[myIndex].copyWith(
+        medicalHistory: stamped,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> saveTreatmentPrescription(
+      PatientData patient, TreatmentPrescription draft) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('No authenticated doctor');
+    }
+
+    await _assertDoctorAssignedToPatient(patient.id, user.uid);
+    final doctorName = await _resolveDoctorName(user.uid, user.email);
+    final now = DateTime.now();
+
+    final patientDoc = await FirebaseFirestore.instance
+        .collection('patients')
+        .doc(patient.id)
+        .get();
+    final rawList = patientDoc.data()?['prescriptions'] as List<dynamic>? ?? [];
+    final updatedPrescriptions = rawList
+        .whereType<Map>()
+        .map((item) =>
+            TreatmentPrescription.fromMap(Map<String, dynamic>.from(item)))
+        .toList();
+
+    final existingIndex =
+        updatedPrescriptions.indexWhere((item) => item.doctorId == user.uid);
+
+    if (existingIndex >= 0) {
+      final existing = updatedPrescriptions[existingIndex];
+      updatedPrescriptions[existingIndex] = draft.copyWith(
+        id: existing.id,
+        doctorId: user.uid,
+        doctorName: doctorName,
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      );
+    } else {
+      updatedPrescriptions.add(
+        draft.copyWith(
+          id: '${user.uid}_${now.millisecondsSinceEpoch}',
+          doctorId: user.uid,
+          doctorName: doctorName,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+    }
+
+    await FirebaseFirestore.instance
+        .collection('patients')
+        .doc(patient.id)
+        .update({
+      'prescriptions':
+          updatedPrescriptions.map((item) => item.toMap()).toList(),
+    });
+
+    final myIndex = _myPatients.indexWhere((p) => p.id == patient.id);
+    if (myIndex != -1) {
+      _myPatients[myIndex] = _myPatients[myIndex].copyWith(
+        prescriptions: updatedPrescriptions,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> _assertDoctorAssignedToPatient(
+      String patientId, String doctorId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('patients')
+        .doc(patientId)
+        .get();
+    if (!doc.exists) {
+      throw StateError('Patient not found');
+    }
+    final assignedDoctorId = doc.data()?['assignedDoctorId'] as String? ?? '';
+    if (assignedDoctorId != doctorId) {
+      throw StateError('Doctor is not assigned to this patient');
+    }
+  }
+
+  Future<String> _resolveDoctorName(
+      String doctorId, String? fallbackEmail) async {
+    if (globalThemeProvider.displayName.trim().isNotEmpty) {
+      return globalThemeProvider.displayName.trim();
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('doctors')
+          .doc(doctorId)
+          .get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        final firstName = data['firstName'] as String? ?? '';
+        final lastName = data['lastName'] as String? ?? '';
+        if (firstName.isNotEmpty && lastName.isNotEmpty) {
+          return '$firstName $lastName';
+        }
+        final fullName = data['fullName'] as String? ?? '';
+        if (fullName.trim().isNotEmpty) {
+          return fullName.trim();
+        }
+      }
+    } catch (_) {}
+
+    return fallbackEmail?.split('@').first ?? 'Doctor';
   }
 }
 
@@ -296,10 +499,13 @@ class PatientData {
   final String notes;
   final String lastSession;
   final String nextAppointment;
+  final String assignedDoctorId;
   final int sessions; // Total sessions set by doctor
   final int completedSessions; // Sessions completed by patient
   final int sets;
   final int reps;
+  final MedicalHistoryData medicalHistory;
+  final List<TreatmentPrescription> prescriptions;
 
   PatientData({
     required this.id,
@@ -313,11 +519,15 @@ class PatientData {
     required this.notes,
     required this.lastSession,
     required this.nextAppointment,
+    this.assignedDoctorId = '',
     this.sessions = 0,
     this.completedSessions = 0,
     this.sets = 3,
     this.reps = 10,
-  });
+    MedicalHistoryData? medicalHistory,
+    List<TreatmentPrescription>? prescriptions,
+  })  : medicalHistory = medicalHistory ?? const MedicalHistoryData(),
+        prescriptions = prescriptions ?? const [];
 
   /// Calculate progress based on completed sessions vs total sessions
   double get calculatedProgress {
@@ -337,9 +547,13 @@ class PatientData {
     String? notes,
     String? lastSession,
     String? nextAppointment,
+    String? assignedDoctorId,
     int? sessions,
+    int? completedSessions,
     int? sets,
     int? reps,
+    MedicalHistoryData? medicalHistory,
+    List<TreatmentPrescription>? prescriptions,
   }) {
     return PatientData(
       id: id ?? this.id,
@@ -353,9 +567,285 @@ class PatientData {
       notes: notes ?? this.notes,
       lastSession: lastSession ?? this.lastSession,
       nextAppointment: nextAppointment ?? this.nextAppointment,
+      assignedDoctorId: assignedDoctorId ?? this.assignedDoctorId,
       sessions: sessions ?? this.sessions,
+      completedSessions: completedSessions ?? this.completedSessions,
       sets: sets ?? this.sets,
       reps: reps ?? this.reps,
+      medicalHistory: medicalHistory ?? this.medicalHistory,
+      prescriptions: prescriptions ?? this.prescriptions,
     );
   }
+}
+
+class MedicalHistoryData {
+  final int? age;
+  final double? heightCm;
+  final double? weightKg;
+  final String walkingDuration;
+  final String mealsPerDay;
+  final String smokingStatus;
+  final String painLevel;
+  final String sleepQuality;
+  final String chronicConditions;
+  final String medications;
+  final String allergies;
+  final String updatedByDoctorId;
+  final String updatedByDoctorName;
+  final DateTime? updatedAt;
+
+  const MedicalHistoryData({
+    this.age,
+    this.heightCm,
+    this.weightKg,
+    this.walkingDuration = '',
+    this.mealsPerDay = '',
+    this.smokingStatus = '',
+    this.painLevel = '',
+    this.sleepQuality = '',
+    this.chronicConditions = '',
+    this.medications = '',
+    this.allergies = '',
+    this.updatedByDoctorId = '',
+    this.updatedByDoctorName = '',
+    this.updatedAt,
+  });
+
+  bool get isEmpty {
+    return age == null &&
+        heightCm == null &&
+        weightKg == null &&
+        walkingDuration.isEmpty &&
+        mealsPerDay.isEmpty &&
+        smokingStatus.isEmpty &&
+        painLevel.isEmpty &&
+        sleepQuality.isEmpty &&
+        chronicConditions.isEmpty &&
+        medications.isEmpty &&
+        allergies.isEmpty &&
+        updatedByDoctorId.isEmpty &&
+        updatedByDoctorName.isEmpty;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'age': age,
+      'heightCm': heightCm,
+      'weightKg': weightKg,
+      'walkingDuration': walkingDuration,
+      'mealsPerDay': mealsPerDay,
+      'smokingStatus': smokingStatus,
+      'painLevel': painLevel,
+      'sleepQuality': sleepQuality,
+      'chronicConditions': chronicConditions,
+      'medications': medications,
+      'allergies': allergies,
+      'updatedByDoctorId': updatedByDoctorId,
+      'updatedByDoctorName': updatedByDoctorName,
+      'updatedAt': updatedAt == null ? null : Timestamp.fromDate(updatedAt!),
+    };
+  }
+
+  factory MedicalHistoryData.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const MedicalHistoryData();
+
+    return MedicalHistoryData(
+      age: (map['age'] as num?)?.toInt(),
+      heightCm: (map['heightCm'] as num?)?.toDouble(),
+      weightKg: (map['weightKg'] as num?)?.toDouble(),
+      walkingDuration: map['walkingDuration'] as String? ?? '',
+      mealsPerDay: map['mealsPerDay'] as String? ?? '',
+      smokingStatus: map['smokingStatus'] as String? ?? '',
+      painLevel: map['painLevel'] as String? ?? '',
+      sleepQuality: map['sleepQuality'] as String? ?? '',
+      chronicConditions: map['chronicConditions'] as String? ?? '',
+      medications: map['medications'] as String? ?? '',
+      allergies: map['allergies'] as String? ?? '',
+      updatedByDoctorId: map['updatedByDoctorId'] as String? ?? '',
+      updatedByDoctorName: map['updatedByDoctorName'] as String? ?? '',
+      updatedAt: _parseDateTime(map['updatedAt']),
+    );
+  }
+
+  MedicalHistoryData copyWith({
+    int? age,
+    double? heightCm,
+    double? weightKg,
+    String? walkingDuration,
+    String? mealsPerDay,
+    String? smokingStatus,
+    String? painLevel,
+    String? sleepQuality,
+    String? chronicConditions,
+    String? medications,
+    String? allergies,
+    String? updatedByDoctorId,
+    String? updatedByDoctorName,
+    DateTime? updatedAt,
+  }) {
+    return MedicalHistoryData(
+      age: age ?? this.age,
+      heightCm: heightCm ?? this.heightCm,
+      weightKg: weightKg ?? this.weightKg,
+      walkingDuration: walkingDuration ?? this.walkingDuration,
+      mealsPerDay: mealsPerDay ?? this.mealsPerDay,
+      smokingStatus: smokingStatus ?? this.smokingStatus,
+      painLevel: painLevel ?? this.painLevel,
+      sleepQuality: sleepQuality ?? this.sleepQuality,
+      chronicConditions: chronicConditions ?? this.chronicConditions,
+      medications: medications ?? this.medications,
+      allergies: allergies ?? this.allergies,
+      updatedByDoctorId: updatedByDoctorId ?? this.updatedByDoctorId,
+      updatedByDoctorName: updatedByDoctorName ?? this.updatedByDoctorName,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class TreatmentPrescription {
+  final String id;
+  final String doctorId;
+  final String doctorName;
+  final String treatmentName;
+  final List<PrescriptionMedicationItem> items;
+  final String notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  const TreatmentPrescription({
+    this.id = '',
+    this.doctorId = '',
+    this.doctorName = '',
+    this.treatmentName = '',
+    this.items = const [],
+    this.notes = '',
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  bool get isEmpty {
+    return treatmentName.trim().isEmpty &&
+        items.every((item) => item.isEmpty) &&
+        notes.trim().isEmpty;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'doctorId': doctorId,
+      'doctorName': doctorName,
+      'treatmentName': treatmentName,
+      'items': items.map((item) => item.toMap()).toList(),
+      'notes': notes,
+      'createdAt': createdAt == null ? null : Timestamp.fromDate(createdAt!),
+      'updatedAt': updatedAt == null ? null : Timestamp.fromDate(updatedAt!),
+    };
+  }
+
+  factory TreatmentPrescription.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const TreatmentPrescription();
+    final rawItems = map['items'];
+    List<PrescriptionMedicationItem> items;
+    if (rawItems is List) {
+      items = rawItems
+          .whereType<Map>()
+          .map((item) => PrescriptionMedicationItem.fromMap(
+              Map<String, dynamic>.from(item)))
+          .toList();
+    } else {
+      final rawMeds = map['medications'];
+      List<String> meds;
+      if (rawMeds is List) {
+        meds = rawMeds.whereType<String>().toList();
+      } else if (map['medicationDetails'] is String &&
+          (map['medicationDetails'] as String).isNotEmpty) {
+        meds = [map['medicationDetails'] as String];
+      } else {
+        meds = [];
+      }
+      items = meds
+          .map(
+            (medication) => PrescriptionMedicationItem(
+              medication: medication,
+              dosage: map['dosage'] as String? ?? '',
+              duration: map['duration'] as String? ?? '',
+            ),
+          )
+          .toList();
+    }
+    return TreatmentPrescription(
+      id: map['id'] as String? ?? '',
+      doctorId: map['doctorId'] as String? ?? '',
+      doctorName: map['doctorName'] as String? ?? '',
+      treatmentName: map['treatmentName'] as String? ?? '',
+      items: items,
+      notes: map['notes'] as String? ?? '',
+      createdAt: _parseDateTime(map['createdAt']),
+      updatedAt: _parseDateTime(map['updatedAt']),
+    );
+  }
+
+  TreatmentPrescription copyWith({
+    String? id,
+    String? doctorId,
+    String? doctorName,
+    String? treatmentName,
+    List<PrescriptionMedicationItem>? items,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return TreatmentPrescription(
+      id: id ?? this.id,
+      doctorId: doctorId ?? this.doctorId,
+      doctorName: doctorName ?? this.doctorName,
+      treatmentName: treatmentName ?? this.treatmentName,
+      items: items ?? this.items,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class PrescriptionMedicationItem {
+  final String medication;
+  final String dosage;
+  final String duration;
+
+  const PrescriptionMedicationItem({
+    this.medication = '',
+    this.dosage = '',
+    this.duration = '',
+  });
+
+  bool get isEmpty {
+    return medication.trim().isEmpty &&
+        dosage.trim().isEmpty &&
+        duration.trim().isEmpty;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'medication': medication,
+      'dosage': dosage,
+      'duration': duration,
+    };
+  }
+
+  factory PrescriptionMedicationItem.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const PrescriptionMedicationItem();
+    return PrescriptionMedicationItem(
+      medication: map['medication'] as String? ?? '',
+      dosage: map['dosage'] as String? ?? '',
+      duration: map['duration'] as String? ?? '',
+    );
+  }
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  return null;
 }

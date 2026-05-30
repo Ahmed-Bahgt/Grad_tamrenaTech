@@ -5,6 +5,8 @@ import '../../utils/patient_profile_manager.dart';
 import 'patient_home_screen.dart';
 import 'patient_book_screen.dart';
 import 'nutrition_screen.dart';
+import 'medical_hub_screen.dart';
+import 'patient_chat_screen.dart';
 // Squat live stream now accessed via dedicated page; dashboard has no extra FAB
 
 /// Patient Dashboard - Main navigation hub with tab-based navigation
@@ -28,6 +30,8 @@ class PatientDashboard extends StatefulWidget {
 
 class _PatientDashboardState extends State<PatientDashboard> {
   int _selectedIndex = 0;
+  // Track which tabs have been opened so we only build them lazily
+  final Set<int> _builtTabs = {0};
 
   @override
   void initState() {
@@ -48,19 +52,20 @@ class _PatientDashboardState extends State<PatientDashboard> {
     }
   }
 
+  void _goToTab(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _builtTabs.add(index);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: AppBar(
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
-              color: Theme.of(context).colorScheme.primary),
-          onPressed:
-              widget.onBackToWelcome ?? () => Navigator.maybePop(context),
-        ),
+        automaticallyImplyLeading: false, // Don't show back button on dashboard root
         title: const Text('Patient Dashboard'),
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         actions: [
@@ -79,7 +84,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 child: Row(
                   children: [
                     Icon(Icons.settings,
-                        color: isDark ? Colors.white70 : Colors.black54),
+                        color: AppTheme.sub(isDark)),
                     const SizedBox(width: 12),
                     Text(t('Settings', 'الإعدادات')),
                   ],
@@ -102,19 +107,22 @@ class _PatientDashboardState extends State<PatientDashboard> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          PatientHomeScreen(
-            onBack: widget.onBackToWelcome,
-          ),
-          PatientBookScreen(onBack: widget.onBackToWelcome),
-          NutritionScreen(onBack: widget.onBackToWelcome),
+          _builtTabs.contains(0) ? PatientHomeScreen(onBack: null) : const SizedBox.shrink(),
+          _builtTabs.contains(1) ? PatientBookScreen(onBack: () => _goToTab(0)) : const SizedBox.shrink(),
+          _builtTabs.contains(2) ? NutritionScreen(onBack: () => _goToTab(0)) : const SizedBox.shrink(),
+          _builtTabs.contains(3) ? MedicalHubScreen(onBack: () => _goToTab(0)) : const SizedBox.shrink(),
+          _builtTabs.contains(4) ? PatientChatScreen(onBack: () => _goToTab(0)) : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        backgroundColor: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
-        selectedItemColor: const Color(0xFF00BCD4),
-        unselectedItemColor: Colors.grey,
+        onTap: (index) => setState(() {
+          _builtTabs.add(index);
+          _selectedIndex = index;
+        }),
+        backgroundColor: AppTheme.card(isDark),
+        selectedItemColor: AppTheme.cyan,
+        unselectedItemColor: AppTheme.sub(isDark),
         type: BottomNavigationBarType.fixed,
         items: [
           BottomNavigationBarItem(
@@ -128,6 +136,14 @@ class _PatientDashboardState extends State<PatientDashboard> {
           BottomNavigationBarItem(
             icon: const Icon(Icons.restaurant_menu),
             label: t('Nutrition Bot', 'بوت التغذية'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.local_hospital_outlined),
+            label: t('Medical Hub', 'المركز الطبي'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: t('Chat', 'المحادثة'),
           ),
         ],
       ),

@@ -1,36 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import '../../utils/theme_provider.dart';
 
-/// Demo Screen - Shows example videos using YouTube (matching Demo.py)
+/// Demo Screen - Shows correct/incorrect form videos for the assigned exercise.
+/// If we don't have demo videos for the exercise type yet, shows a clean
+/// placeholder instead of falling back to a squat video.
 class SessionDemoScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final String? exerciseType; // 'Squat', 'Shoulder Abduction', etc.
 
-  const SessionDemoScreen({super.key, this.onBack});
+  const SessionDemoScreen({super.key, this.onBack, this.exerciseType});
 
   @override
   State<SessionDemoScreen> createState() => _SessionDemoScreenState();
 }
 
 class _SessionDemoScreenState extends State<SessionDemoScreen> {
-  String _selectedTraining = 'Squat';
   String _selectedForm = 'Correct';
   YoutubePlayerController? _videoController;
   bool _isLoading = false;
   String? _errorMessage;
 
-  final Map<String, String> _trainingTypes = {'Squat': 'squat'};
-  final Map<String, String> _formOptions = {'Correct': 'correct', 'Incorrect': 'incorrect'};
-
-  /// YouTube Video IDs mapping
-  final Map<String, String> _videoIdMap = {
-    'squat_correct': 'NjCrfSkrxDI',
-    'squat_incorrect': 'rS-nhzFEeLg',
+  // YouTube IDs per exercise. Add entries here as you record demo clips for
+  // the other exercises.
+  static const Map<String, Map<String, String>> _videoIdsByExercise = {
+    'Squat': {
+      'correct': 'NjCrfSkrxDI',
+      'incorrect': 'rS-nhzFEeLg',
+    },
   };
+
+  String get _exerciseName {
+    final t = widget.exerciseType?.trim();
+    return (t == null || t.isEmpty) ? 'Squat' : t;
+  }
+
+  bool get _hasVideos => _videoIdsByExercise.containsKey(_exerciseName);
+
+  String? _getVideoId() {
+    final ids = _videoIdsByExercise[_exerciseName];
+    if (ids == null) return null;
+    return ids[_selectedForm.toLowerCase()];
+  }
 
   @override
   void initState() {
     super.initState();
-    _setupController();
+    if (_hasVideos) _setupController();
   }
 
   @override
@@ -39,15 +55,9 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
     super.dispose();
   }
 
-  String _getVideoId() {
-    final shortName = (_trainingTypes[_selectedTraining] ?? 'squat').toLowerCase();
-    final formName = (_formOptions[_selectedForm] ?? 'correct').toLowerCase();
-    final key = '${shortName}_$formName';
-    return _videoIdMap[key] ?? 'NjCrfSkrxDI'; // Default to correct squat
-  }
-
   void _setupController() {
     final videoId = _getVideoId();
+    if (videoId == null) return;
     _videoController = YoutubePlayerController(
       initialVideoId: videoId,
       flags: const YoutubePlayerFlags(
@@ -64,29 +74,18 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
 
   Future<void> _loadSelectedVideo() async {
     if (_videoController == null) return;
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-
     final videoId = _getVideoId();
     try {
-      _videoController!.load(videoId);
-    } catch (e, stackTrace) {
-      print('❌ Video load failed');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
+      if (videoId != null) _videoController!.load(videoId);
+    } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMessage = 'Video playback failed. Error: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Video playback failed: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -104,73 +103,96 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
+              color: AppTheme.text(isDark),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _exerciseName,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.sub(isDark),
             ),
           ),
           const SizedBox(height: 20),
 
-          // Dropdowns
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Training type',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    _buildDropdown(
-                      value: _selectedTraining,
-                      items: _trainingTypes.keys.toList(),
-                      onChanged: (v) {
-                        setState(() => _selectedTraining = v ?? 'Squat');
-                        _loadSelectedVideo();
-                      },
-                      isDark: isDark,
-                    ),
-                  ],
+          if (_hasVideos) ...[
+            // Form picker (Correct / Incorrect) — only shown when we have videos
+            Row(
+              children: [
+                Text('Form',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600,
+                        color: AppTheme.sub(isDark))),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDropdown(
+                    value: _selectedForm,
+                    items: const ['Correct', 'Incorrect'],
+                    onChanged: (v) {
+                      setState(() => _selectedForm = v ?? 'Correct');
+                      _loadSelectedVideo();
+                    },
+                    isDark: isDark,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Example — $_exerciseName · $_selectedForm',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppTheme.card(isDark),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Form',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    _buildDropdown(
-                      value: _selectedForm,
-                      items: _formOptions.keys.toList(),
-                      onChanged: (v) {
-                        setState(() => _selectedForm = v ?? 'Correct');
-                        _loadSelectedVideo();
-                      },
-                      isDark: isDark,
-                    ),
-                  ],
-                ),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: _buildVideoContent(isDark),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
+            ),
+          ] else
+            _buildNoDemoCard(isDark),
+        ],
+      ),
+    );
+  }
 
-          Text(
-            'Example — $_selectedTraining · $_selectedForm',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+  Widget _buildNoDemoCard(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.card(isDark),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border(isDark)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.video_library_outlined,
+              size: 56, color: AppTheme.sub(isDark).withValues(alpha: 0.6)),
           const SizedBox(height: 12),
-
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+          Text(
+            'Demo video not available yet',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.text(isDark),
             ),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: _buildVideoContent(isDark),
-            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'A reference clip for $_exerciseName will be added soon. '
+            'Switch to the Live Stream tab to start your session — '
+            'the AI trainer will guide you with on-screen feedback.',
+            style: TextStyle(fontSize: 13, color: AppTheme.sub(isDark)),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -185,25 +207,17 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.info_outline, size: 48, color: Colors.orange),
+              const Icon(Icons.info_outline, size: 48, color: Colors.orange),
               const SizedBox(height: 16),
-              Text(
-                'Video Unavailable',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Video Unavailable',
+                  style: TextStyle(
+                      color: AppTheme.text(isDark),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text(
-                _errorMessage ?? 'Network error',
-                style: TextStyle(
-                  color: isDark ? Colors.white60 : Colors.black54,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
+              Text(_errorMessage ?? 'Network error',
+                  style: TextStyle(color: AppTheme.sub(isDark), fontSize: 12),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: _loadSelectedVideo,
@@ -233,7 +247,7 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
             if (_isLoading)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   child: const Center(
                     child: SizedBox(
                       width: 28,
@@ -252,16 +266,17 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.play_circle_outline, size: 64, color: isDark ? Colors.white30 : Colors.black26),
+          Icon(Icons.play_circle_outline,
+              size: 64, color: AppTheme.sub(isDark).withValues(alpha: 0.5)),
           const SizedBox(height: 16),
-          Text('Ready to play', style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+          Text('Ready to play', style: TextStyle(color: AppTheme.sub(isDark))),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _loadSelectedVideo,
             icon: const Icon(Icons.play_arrow),
             label: const Text('Load Video'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF64B5F6),
+              backgroundColor: AppTheme.cyan,
               foregroundColor: Colors.white,
             ),
           ),
@@ -279,18 +294,20 @@ class _SessionDemoScreenState extends State<SessionDemoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1F26) : Colors.grey[100],
+        color: AppTheme.card(isDark),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
+        border: Border.all(color: AppTheme.border(isDark)),
       ),
       child: DropdownButton<String>(
         value: value,
         isExpanded: true,
         underline: const SizedBox(),
-        dropdownColor: isDark ? const Color(0xFF161B22) : Colors.white,
-        style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14),
+        dropdownColor: AppTheme.card(isDark),
+        style: TextStyle(color: AppTheme.text(isDark), fontSize: 14),
         onChanged: onChanged,
-        items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+        items: items
+            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+            .toList(),
       ),
     );
   }

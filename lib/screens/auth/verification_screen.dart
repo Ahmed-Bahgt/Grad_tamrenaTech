@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import '../../widgets/gradient_button.dart';
@@ -5,7 +6,7 @@ import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_form_field.dart';
 
 /// Verification Screen - SMS/Email Verification
-class VerificationScreen extends StatelessWidget {
+class VerificationScreen extends StatefulWidget {
   final VoidCallback onSubmit;
   final VoidCallback onBack;
 
@@ -16,14 +17,58 @@ class VerificationScreen extends StatelessWidget {
   });
 
   @override
+  State<VerificationScreen> createState() => _VerificationScreenState();
+}
+
+class _VerificationScreenState extends State<VerificationScreen> {
+  int _secondsLeft = 60;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() => _secondsLeft = 60);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_secondsLeft <= 1) {
+        t.cancel();
+        setState(() => _secondsLeft = 0);
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
+  }
+
+  void _resendCode() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(t('Code resent successfully', 'تم إعادة إرسال الرمز بنجاح')),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    _startTimer();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: CustomAppBar(
         title: t('Verification', 'التحقق'),
-        onBack: onBack,
+        onBack: widget.onBack,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -40,7 +85,7 @@ class VerificationScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
+                color: AppTheme.text(isDark),
               ),
             ),
             const SizedBox(height: 10),
@@ -49,7 +94,7 @@ class VerificationScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
-                color: isDark ? Colors.white60 : Colors.black54,
+                color: AppTheme.sub(isDark),
               ),
             ),
             const SizedBox(height: 40),
@@ -60,26 +105,30 @@ class VerificationScreen extends StatelessWidget {
             const SizedBox(height: 30),
             GradientButton(
               text: t('Submit', 'إرسال'),
-              onPressed: onSubmit,
+              onPressed: widget.onSubmit,
             ),
             const SizedBox(height: 20),
-            TextButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(t('Code resent successfully', 'تم إعادة إرسال الرمز بنجاح')),
-                    duration: const Duration(seconds: 2),
+            _secondsLeft > 0
+                ? Text(
+                    t(
+                      'Resend code in $_secondsLeft s',
+                      'إعادة الإرسال خلال $_secondsLeft ث',
+                    ),
+                    style: TextStyle(
+                      color: AppTheme.sub(isDark).withValues(alpha: 0.6),
+                      fontSize: 14,
+                    ),
+                  )
+                : TextButton(
+                    onPressed: _resendCode,
+                    child: Text(
+                      t('Resend Code', 'إعادة إرسال الرمز'),
+                      style: const TextStyle(
+                        color: Color(0xFF00BCD4),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                );
-              },
-              child: Text(
-                t('Resend Code', 'إعادة إرسال الرمز'),
-                style: const TextStyle(
-                  color: Color(0xFF00BCD4),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
           ],
         ),
       ),

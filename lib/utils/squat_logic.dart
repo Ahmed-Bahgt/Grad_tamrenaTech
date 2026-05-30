@@ -25,6 +25,8 @@ class SquatLogic {
   bool _waitingForReset = false;
   int _messageTimer = 0; // frames (~30fps, Python uses 90)
   String? _freezeMessage;
+  int _effectiveSetCount = 0; // sets with accuracy >= 70%
+  double _lastSetAccuracy = 0.0;
 
   // Feedback flags with frame counting (matching Python's COUNT_FRAMES)
   Map<int, bool> _displayText = {0: false, 1: false, 2: false, 3: false};
@@ -52,10 +54,14 @@ class SquatLogic {
         : SquatThresholds.pro();
   }
 
+  int get effectiveSetCount => _effectiveSetCount;
+
   void reset() {
     _setCount = 0;
     _squatCount = 0;
     _improperCount = 0;
+    _effectiveSetCount = 0;
+    _lastSetAccuracy = 0.0;
     _stateSeq = [];
     _currentState = null;
     _prevState = null;
@@ -85,8 +91,9 @@ class SquatLogic {
       if (_messageTimer > 0) {
         _messageTimer -= 1;
       }
-      // If Timer finishes, reset everything for the next set
+      // If Timer finishes, tally effective set then reset for next set
       if (_messageTimer <= 0) {
+        if (_lastSetAccuracy >= 70.0) _effectiveSetCount++;
         _waitingForReset = false;
         _squatCount = 0;
         _improperCount = 0;
@@ -254,6 +261,7 @@ class SquatLogic {
         // Check limit / sets
         final totalReps = _squatCount + _improperCount;
         if (totalReps >= targetReps) {
+          _lastSetAccuracy = totalReps > 0 ? (_squatCount / totalReps * 100) : 0.0;
           _waitingForReset = true;
           _messageTimer = 90; // ~3 seconds at 30 fps
           final nextSet = _setCount + 1;
@@ -294,10 +302,14 @@ class SquatLogic {
       _lowerHips = false;
     }
 
-    // Update frame count for feedback persistence
+    // Update frame count for feedback persistence — clear after 30 frames
     for (int i = 0; i < 4; i++) {
       if (_displayText[i] == true) {
-        _countFrames[i] = (_countFrames[i]! + 1).clamp(0, 999);
+        _countFrames[i] = (_countFrames[i]! + 1);
+        if (_countFrames[i]! > 30) {
+          _displayText[i] = false;
+          _countFrames[i] = 0;
+        }
       }
     }
 
@@ -328,6 +340,7 @@ class SquatLogic {
       correctReps: _squatCount,
       incorrectReps: _improperCount,
       currentSet: _setCount,
+      effectiveSetCount: _effectiveSetCount,
       feedback: _generateFeedback(),
       isRepCounted: false,
       hipAngle: 0,
@@ -355,6 +368,7 @@ class SquatLogic {
       correctReps: _squatCount,
       incorrectReps: _improperCount,
       currentSet: _setCount,
+      effectiveSetCount: _effectiveSetCount,
       feedback: _generateFeedback(),
       isRepCounted: repCounted,
       hipAngle: hipAngle,
@@ -436,6 +450,7 @@ class SquatResult {
   final int correctReps;
   final int incorrectReps;
   final int currentSet;
+  final int effectiveSetCount;
   final String feedback;
   final bool isRepCounted;
   final double kneeAngle;
@@ -452,6 +467,7 @@ class SquatResult {
     required this.correctReps,
     required this.incorrectReps,
     required this.currentSet,
+    required this.effectiveSetCount,
     required this.feedback,
     required this.isRepCounted,
     required this.kneeAngle,
@@ -466,6 +482,7 @@ class SquatResult {
   });
 
   /// Converts to a map suitable for Firestore workout logging.
+  /// timestamp is intentionally omitted — DatabaseService adds FieldValue.serverTimestamp().
   Map<String, dynamic> toWorkoutMap({int? targetSets}) {
     final totalReps = correctReps + incorrectReps;
     final accuracy = totalReps > 0 ? (correctReps / totalReps * 100) : 0.0;
@@ -475,13 +492,13 @@ class SquatResult {
       'totalReps': totalReps,
       'accuracy': accuracy,
       'currentSet': currentSet,
+      'effectiveSets': effectiveSetCount,
       'feedback': feedback,
       'sessionComplete': sessionComplete,
       'kneeAngle': kneeAngle,
       'hipAngle': hipAngle,
       'ankleAngle': ankleAngle,
       'targetSets': targetSets,
-      'timestamp': DateTime.now().toUtc(),
     };
   }
 }

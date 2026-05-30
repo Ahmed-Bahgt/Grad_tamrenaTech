@@ -1,3 +1,13 @@
+# Large files (videos, recordings)
+*.mp4
+*.flv
+*.avi
+*.mov
+
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
 # Miscellaneous
 *.class
 *.log
@@ -17,6 +27,8 @@ lib/utils/api_config.dart
 .env
 *.env
 api_keys.txt
+*-firebase-adminsdk-*.json
+custom_backend/.env
 
 # IntelliJ related
 *.iml

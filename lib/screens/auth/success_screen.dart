@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/theme_provider.dart';
 import '../../widgets/gradient_button.dart';
 
 /// Success Screen - Generic Success Page
@@ -21,7 +22,7 @@ class SuccessScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -39,7 +40,7 @@ class SuccessScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: AppTheme.text(isDark),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -48,7 +49,7 @@ class SuccessScreen extends StatelessWidget {
                 message,
                 style: TextStyle(
                   fontSize: 16,
-                  color: isDark ? Colors.white60 : Colors.black54,
+                  color: AppTheme.sub(isDark),
                 ),
                 textAlign: TextAlign.center,
               ),

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tamren Tech</string>
+	<string>Seneb - Admin</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>tamren_tech</string>
+	<string>Seneb - Admin</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -47,5 +47,9 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to your camera to analyze your exercise form during workout sessions.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photos so you can choose chat images.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs access to save chat images to your gallery.</string>
 </dict>
 </plist>

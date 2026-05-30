@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import 'database_service.dart';
+import 'sql_service.dart';
 
 /// Registration role options.
 enum RegistrationRole { patient, doctor }
@@ -218,6 +219,23 @@ class AuthService {
       certificateUrl: certificateUrl,
       qualifications: uploadedQualifications,
     );
+
+    // --- SYNC TO SQL BACKEND (Production-Like) ---
+    try {
+      final sqlService = SqlService();
+      await sqlService.syncUser(
+        uid: emailCred.user!.uid,
+        email: data.email,
+        fullName: data.fullName,
+        phone: data.phoneNumber,
+        role: data.role.name,
+      );
+      debugPrint('🔥 SQL: ✅ User synced to PostgreSQL');
+    } catch (e) {
+      debugPrint('⚠️ SQL: Sync failed - $e');
+      // We don't block registration if SQL sync fails, but we log it.
+    }
+
     debugPrint('🔥 Firebase: ✅ Registration complete for ${data.fullName} (${data.role.name})');
 
     return emailCred;
@@ -274,6 +292,7 @@ class AuthService {
       phone: data.phoneNumber,
       email: data.email,
       degree: graduationYear,
+      graduationDate: data.graduationDate,
       certificateUrl: certificateUrl,
       additionalQualifications: data.additionalQualifications,
       firstName: data.firstName,
@@ -284,6 +303,12 @@ class AuthService {
 
   String? _extractGraduationYear(String? graduationDate) {
     if (graduationDate == null || graduationDate.isEmpty) return null;
+    // DD/MM/YYYY format
+    if (graduationDate.contains('/')) {
+      final parts = graduationDate.split('/');
+      return parts.length == 3 ? parts.last : graduationDate;
+    }
+    // YYYY-MM-DD format (legacy)
     final parts = graduationDate.split('-');
     if (parts.isEmpty) return null;
     return parts.first;

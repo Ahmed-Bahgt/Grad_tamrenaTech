@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../utils/theme_provider.dart';
@@ -246,15 +246,14 @@ class _PatientCommunityScreenState extends State<PatientCommunityScreen> {
       );
     }
 
-    final accent = isDark ? const Color(0xFF64B5F6) : const Color(0xFF8BC34A);
+    const accent = AppTheme.cyan;
 
     return Scaffold(
       appBar: CustomAppBar(
         title: t('Community', 'المجتمع'),
         onBack: widget.onBack,
       ),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       body: Column(
         children: [
           Padding(
@@ -262,19 +261,19 @@ class _PatientCommunityScreenState extends State<PatientCommunityScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: _filterGroups,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
+              style: TextStyle(color: AppTheme.text(isDark)),
               decoration: InputDecoration(
                 hintText:
                     t('Search injury groups...', 'ابحث عن مجموعات الإصابات...'),
                 hintStyle: TextStyle(
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  color: AppTheme.sub(isDark),
                 ),
                 prefixIcon: Icon(
                   Icons.search,
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  color: AppTheme.sub(isDark),
                 ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF1C1F26) : Colors.grey[100],
+                fillColor: AppTheme.card(isDark),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -294,7 +293,7 @@ class _PatientCommunityScreenState extends State<PatientCommunityScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
+                      color: AppTheme.text(isDark),
                     ),
                   ),
                 ),
@@ -302,7 +301,7 @@ class _PatientCommunityScreenState extends State<PatientCommunityScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.15),
+                    color: accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -330,7 +329,7 @@ class _PatientCommunityScreenState extends State<PatientCommunityScreen> {
                     child: Text(
                       t('No groups found', 'لا توجد مجموعات'),
                       style: TextStyle(
-                        color: isDark ? Colors.grey[500] : Colors.grey[600],
+                        color: AppTheme.sub(isDark),
                         fontSize: 14,
                       ),
                     ),
@@ -372,15 +371,15 @@ class _GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = isDark ? const Color(0xFF64B5F6) : const Color(0xFF8BC34A);
+    const accent = AppTheme.cyan;
     return Card(
-      color: isDark ? const Color(0xFF1C1F26) : Colors.white,
+      color: AppTheme.card(isDark),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+          color: AppTheme.border(isDark),
         ),
       ),
       child: ListTile(
@@ -402,7 +401,7 @@ class _GroupCard extends StatelessWidget {
         title: Text(
           group.name,
           style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
+            color: AppTheme.text(isDark),
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -413,7 +412,7 @@ class _GroupCard extends StatelessWidget {
             Text(
               group.injury,
               style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[700],
+                color: AppTheme.sub(isDark),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -424,7 +423,7 @@ class _GroupCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                color: AppTheme.sub(isDark),
                 fontSize: 12,
               ),
             ),
@@ -436,7 +435,7 @@ class _GroupCard extends StatelessWidget {
             Text(
               _formatTime(group.lastMessageTime),
               style: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[500],
+                color: AppTheme.sub(isDark),
                 fontSize: 11,
               ),
             ),
@@ -523,8 +522,7 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
   @override
   Widget build(BuildContext context) {
     final group = widget.group;
-    final accent =
-        widget.isDark ? const Color(0xFF64B5F6) : const Color(0xFF8BC34A);
+    const accent = AppTheme.cyan;
 
     return Scaffold(
       appBar: AppBar(
@@ -585,21 +583,20 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
-                color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+                color: AppTheme.sub(widget.isDark),
               ),
             ),
           ],
         ),
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
       ),
-      backgroundColor:
-          widget.isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(widget.isDark),
       body: Column(
         children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: widget.isDark ? const Color(0xFF1C1F26) : Colors.grey[100],
+            color: AppTheme.card(widget.isDark),
             child: Row(
               children: [
                 Container(
@@ -632,7 +629,7 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color:
-                          widget.isDark ? Colors.grey[400] : Colors.grey[700],
+                          AppTheme.sub(widget.isDark),
                       fontSize: 12,
                     ),
                   ),
@@ -657,7 +654,7 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: widget.isDark ? const Color(0xFF1C1F26) : Colors.grey[50],
+              color: AppTheme.card(widget.isDark),
               border: Border(
                 top: BorderSide(
                   color: widget.isDark ? Colors.grey[800]! : Colors.grey[300]!,
@@ -670,7 +667,7 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
                   child: TextField(
                     controller: _messageController,
                     style: TextStyle(
-                      color: widget.isDark ? Colors.white : Colors.black,
+                      color: AppTheme.text(widget.isDark),
                     ),
                     decoration: InputDecoration(
                       hintText: t('Share an update...', 'اكتب تحديثاً...'),
@@ -683,9 +680,7 @@ class _GroupChatScreenState extends State<_GroupChatScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: widget.isDark
-                          ? const Color(0xFF0D1117)
-                          : Colors.white,
+                      fillColor: AppTheme.bg(widget.isDark),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,
@@ -767,8 +762,8 @@ class _MessageBubble extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: message.isMe
-                  ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF8BC34A))
-                  : (isDark ? const Color(0xFF1C1F26) : Colors.grey[200]),
+                  ? AppTheme.cyan
+                  : AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -782,7 +777,7 @@ class _MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                        color: AppTheme.sub(isDark),
                       ),
                     ),
                   ),
@@ -791,7 +786,7 @@ class _MessageBubble extends StatelessWidget {
                   style: TextStyle(
                     color: message.isMe
                         ? Colors.white
-                        : (isDark ? Colors.white : Colors.black),
+                        : (AppTheme.text(isDark)),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -801,7 +796,7 @@ class _MessageBubble extends StatelessWidget {
                     fontSize: 10,
                     color: message.isMe
                         ? Colors.white70
-                        : (isDark ? Colors.grey[600] : Colors.grey[500]),
+                        : AppTheme.sub(isDark).withValues(alpha: 0.8),
                   ),
                 ),
               ],

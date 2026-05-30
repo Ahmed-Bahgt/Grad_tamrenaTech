@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'theme_provider.dart';
 
 /// Singleton to manage patient bookings across the app
 class PatientBookingsManager {
@@ -16,6 +17,7 @@ class PatientBookingsManager {
     _setupRealtimeListener();
     // Ensure bookings are scoped to the signed-in patient only
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (appDevMode) return;
       if (user == null) {
         _bookings.clear();
         _bookingsStreamSub?.cancel();
@@ -56,6 +58,15 @@ class PatientBookingsManager {
     }
   }
 
+  /// Seed in-memory data for dev/test mode (no Firebase needed)
+  void loadDevModeData(List<PatientBooking> bookings) {
+    _bookingsStreamSub?.cancel();
+    _bookings
+      ..clear()
+      ..addAll(bookings);
+    _notifyListeners();
+  }
+
   /// Optionally force a reload
   Future<void> refresh() async => _loadBookingsFromFirestore();
 
@@ -67,6 +78,7 @@ class PatientBookingsManager {
 
   /// Setup real-time Firestore listener for instant updates
   void _setupRealtimeListener() {
+    if (appDevMode) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       debugPrint(
@@ -134,6 +146,7 @@ class PatientBookingsManager {
 
   /// Load bookings from Firestore for current patient (fallback method)
   Future<void> _loadBookingsFromFirestore() async {
+    if (appDevMode) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       debugPrint(
@@ -159,11 +172,11 @@ class PatientBookingsManager {
         _bookings.add(PatientBooking(
           id: doc.id,
           doctorId: data['doctorId'] as String? ?? '',
-          doctorName: data['doctorName'] as String,
-          specialty: data['specialty'] as String,
+          doctorName: data['doctorName'] as String? ?? 'Unknown Doctor',
+          specialty: data['specialty'] as String? ?? 'Specialist',
           dateTime: dateTime,
           endTime: endTime,
-          doctorImage: data['doctorImage'] as String,
+          doctorImage: data['doctorImage'] as String? ?? '',
           status: data['status'] as String? ?? 'upcoming',
         ));
       }

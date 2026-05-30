@@ -1,12 +1,12 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
-
-import 'package:tamren_tech/services/edamam_service.dart';
-import 'package:tamren_tech/services/gemini_service.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:tamren_tech/services/sql_nutrition_service.dart';
 import 'package:tamren_tech/widgets/custom_app_bar.dart';
+import '../../utils/theme_provider.dart';
 
 class NutritionChatbotScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -17,181 +17,178 @@ class NutritionChatbotScreen extends StatefulWidget {
 }
 
 class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
-  final ImagePicker _picker = ImagePicker();
-  final GeminiService _gemini = GeminiService();
-  final EdamamService _edamam = EdamamService();
-  final TextEditingController _messageController = TextEditingController();
-
+  final _picker = ImagePicker();
   File? _imageFile;
-  String? _ingredients;
-  NutritionResult? _nutrition;
-  bool _isAnalyzing = false;
-  bool _isSending = false;
+  bool _isBusy = false;
   String? _error;
-  ChatSession? _chat;
-  final List<_ChatMessage> _messages = [];
+  
+  Map<String, dynamic>? _analysisResult;
+  List<dynamic> _ingredients = [];
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final picked = await _picker.pickImage(source: ImageSource.gallery);
-      if (picked == null) return;
-      setState(() {
-        _imageFile = File(picked.path);
-        _ingredients = null;
-        _nutrition = null;
-        _chat = null;
-        _messages.clear();
-        _error = null;
-      });
-    } catch (e) {
-      _showError('Failed to pick image: $e');
-    }
-  }
-
-  Future<void> _analyzeImage() async {
-    if (_imageFile == null) {
-      _showError('Please select an image first.');
-      return;
-    }
+  Future<void> _pickImage({bool fromCamera = false}) async {
+    final picked = await _picker.pickImage(
+      source: fromCamera ? ImageSource.camera : ImageSource.gallery, 
+      imageQuality: 85
+    );
+    if (picked == null) return;
     setState(() {
-      _isAnalyzing = true;
+      _imageFile = File(picked.path);
+      _analysisResult = null; // Clear old results
+      _ingredients = [];
       _error = null;
-      _nutrition = null;
-      _ingredients = null;
     });
+  }
+
+  Future<void> _detectFoods() async {
+    if (_imageFile == null) return;
+    setState(() { _isBusy = true; _error = null; });
     try {
-      final ingredients =
-          await _gemini.extractIngredientsFromImageFile(_imageFile!);
-      if (!mounted) return;
-
-      if (ingredients.isEmpty) {
-        _showError('No ingredients detected. Try a clearer image.');
-        return;
-      }
-
-      final nutrition = await _edamam.getNutritionFacts(ingredients);
-      if (!mounted) return;
-
-      if (nutrition == null) {
-        _showError('Nutrition analysis failed.');
-        return;
-      }
-
-      final contextText = _buildContext(ingredients, nutrition);
-      _chat = _gemini.startChat(contextText);
-
+      final response = await sqlNutritionService.analyzeMeal(_imageFile!);
       setState(() {
-        _ingredients = ingredients;
-        _nutrition = nutrition;
+        _ingredients = List.from(response['analysis']['ingredients']);
+        _analysisResult = null; // Don't show dashboard until 'Calculate' is clicked
       });
     } catch (e) {
-      if (!mounted) return;
-      _showError('Analysis failed: $e');
+      setState(() => _error = 'Detection failed: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isAnalyzing = false;
-        });
-      }
+      setState(() => _isBusy = false);
     }
   }
 
-  String _buildContext(String ingredients, NutritionResult nutrition) {
-    final buffer = StringBuffer();
-    buffer.writeln('You are a concise nutrition assistant.');
-    buffer.writeln('INGREDIENTS: $ingredients');
-    buffer.writeln('NUTRITION_FACTS:');
-
-    for (final entry in nutrition.nutrients.entries) {
-      final n = entry.value;
-      buffer.writeln('${n.label}: ${n.quantity.toStringAsFixed(1)} ${n.unit}');
+  Future<void> _calculateFinal() async {
+    if (_ingredients.isEmpty) return;
+    setState(() { _isBusy = true; _error = null; });
+    try {
+      final response = await sqlNutritionService.recalculate(_ingredients);
+      setState(() {
+        _analysisResult = response;
+      });
+      // Save to history
+      _saveToHistory(response);
+    } catch (e) {
+      setState(() => _error = 'Calculation failed: $e');
+    } finally {
+      setState(() => _isBusy = false);
     }
-    return buffer.toString();
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-    if (_chat == null) {
-      _showError('Analyze an image first to start the chat.');
-      return;
-    }
-
-    setState(() {
-      _isSending = true;
-      _messages.add(_ChatMessage(role: MessageRole.user, text: text));
-      _messageController.clear();
-    });
+  Future<void> _saveToHistory(Map<String, dynamic> result) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
     try {
-      final reply = await _gemini.sendChatMessage(_chat!, text);
-      if (!mounted) return;
-      setState(() {
-        _messages.add(_ChatMessage(role: MessageRole.assistant, text: reply));
+      final docRef = await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(user.uid)
+          .collection('NutritionHistory')
+          .add({
+        'ingredients': _ingredients,
+        'total': result['total'],
+        'timestamp': FieldValue.serverTimestamp(),
+        // Note: we're not saving the local image file to storage here to keep it simple, 
+        // but normally we would upload it first.
       });
+      _activeSessionId = docRef.id;
     } catch (e) {
-      if (!mounted) return;
-      _showError('Chat failed: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-        });
-      }
+      debugPrint('Error saving nutrition history: $e');
     }
   }
 
-  void _showError(String message) {
+  String? _activeSessionId;
+
+  void _reset() {
     setState(() {
-      _error = message;
-      _isAnalyzing = false;
-      _isSending = false;
+      _imageFile = null;
+      _analysisResult = null;
+      _ingredients = [];
+      _error = null;
+      _messages.clear();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+  }
+
+  void _showResultSheet() {
+    final total = _analysisResult?['total'] ?? {};
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _NutritionResultSheet(total: total),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      appBar: CustomAppBar(title: 'Nutrition Assistant', onBack: widget.onBack),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
-      body: SafeArea(
-        child: SingleChildScrollView(
+    final isDark = globalThemeProvider.isDarkMode;
+    final theme = isDark ? AppTheme.dark() : AppTheme.light();
+
+    return Theme(
+      data: theme,
+      child: Scaffold(
+        backgroundColor: AppTheme.bg(isDark),
+        appBar: CustomAppBar(
+          title: 'Nutrition Assistant', 
+          onBack: widget.onBack,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.history_rounded, color: AppTheme.cyan),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _NutritionHistoryScreen())),
+              tooltip: 'History',
+            ),
+            if (_imageFile != null)
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: Colors.redAccent),
+                onPressed: _reset,
+                tooltip: 'Reset',
+              ),
+          ],
+        ),
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildImageCard(isDark),
-              const SizedBox(height: 16),
-              _buildActionButtons(),
-              if (_isAnalyzing) ...[
+              // 1. Image View
+              _buildImageContainer(isDark),
+              const SizedBox(height: 20),
+
+              // 2. Action Buttons Row (Premium Styling)
+              Row(
+                children: [
+                  Expanded(child: _premiumActionBtn(Icons.camera_alt_rounded, 'Camera', () => _pickImage(fromCamera: true), Colors.teal, isDark)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _premiumActionBtn(Icons.photo_library_rounded, 'Gallery', _pickImage, Colors.blueGrey, isDark)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _premiumActionBtn(Icons.auto_awesome_rounded, 'Detect', _detectFoods, AppTheme.cyan, isDark)),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // 3. Detected Foods Section
+              if (_ingredients.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _sectionTitle('Detected Ingredients', isDark),
                 const SizedBox(height: 12),
-                const Center(child: CircularProgressIndicator()),
+                _buildIngredientsList(isDark),
+                const SizedBox(height: 24),
+                _primaryBtn('Calculate Full Nutrition', _calculateFinal, isDark),
+                
+                if (_analysisResult != null) ...[
+                  const SizedBox(height: 32),
+                  _sectionTitle('Nutrition Facts', isDark),
+                  const SizedBox(height: 16),
+                  _buildNutritionDashboard(isDark),
+                  const SizedBox(height: 32),
+                  _sectionTitle('Ask AI about this meal', isDark),
+                  const SizedBox(height: 12),
+                  _buildChatSection(isDark),
+                ],
               ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: const TextStyle(
-                      color: Colors.red, fontWeight: FontWeight.w600),
-                ),
-              ],
-              if (_ingredients != null || _nutrition != null) ...[
-                const SizedBox(height: 16),
-                _buildResultsCard(isDark),
-              ],
-              const SizedBox(height: 16),
-              _buildChatSection(isDark),
+              
+              if (_isBusy) 
+                const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: AppTheme.cyan))),
+
+              if (_error != null)
+                Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
             ],
           ),
         ),
@@ -199,235 +196,436 @@ class _NutritionChatbotScreenState extends State<NutritionChatbotScreen> {
     );
   }
 
-  Widget _buildImageCard(bool isDark) {
+  Widget _buildImageContainer(bool isDark) {
     return Container(
+      height: 220,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161B22) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.white12 : Colors.grey[300]!,
-        ),
+        color: isDark ? Colors.white12 : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(20),
+        image: _imageFile != null ? DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover) : null,
       ),
-      padding: const EdgeInsets.all(12),
-      child: _imageFile == null
-          ? Column(
-              children: [
-                Icon(Icons.image, size: 64, color: Colors.teal.shade400),
-                const SizedBox(height: 8),
-                Text(
-                  'Pick a meal photo to analyze',
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                  ),
-                ),
-              ],
-            )
-          : ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                _imageFile!,
-                height: 220,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            ),
+      child: _imageFile == null ? const Icon(Icons.fastfood_outlined, size: 64, color: Colors.grey) : null,
     );
   }
 
-  Widget _buildActionButtons() {
-    return Row(
+  Widget _buildIngredientsList(bool isDark) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _ingredients.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final item = _ingredients[index];
+        return Row(
+          children: [
+            // Quantity Box (Wider & Clearer)
+            Container(
+              width: 80,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.cyan.withValues(alpha: 0.3)),
+              ),
+              child: TextField(
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.text(isDark), fontSize: 16),
+                decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                controller: TextEditingController(text: '${item['quantity']}')..selection = TextSelection.collapsed(offset: '${item['quantity']}'.length),
+                onChanged: (val) {
+                   final numVal = double.tryParse(val);
+                   if (numVal != null) _ingredients[index]['quantity'] = numVal;
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Unit Box (Dynamic from AI)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.cyan.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                item['unit'] ?? 'g', 
+                style: const TextStyle(color: AppTheme.cyan, fontWeight: FontWeight.w900, fontSize: 12)
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Food Name (Cleaned)
+            Expanded(
+              child: Text(
+                _cleanFoodName(item['food']), 
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.text(isDark))
+              )
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _cleanFoodName(String name) {
+    // Aggressive cleaning of units and numbers from the name
+    return name
+      .replaceAll(RegExp(r'^\d+\.?\d*\s*', caseSensitive: false), '') // Remove leading numbers
+      .replaceAll(RegExp(r'\b(g|grams|cup|cups|oz|lb|piece|slice|bowl|ml)\b', caseSensitive: false), '') // Remove units
+      .replaceAll(RegExp(r'^[-\*\.\s]+'), '') // Remove bullets
+      .trim();
+  }
+
+  Widget _premiumActionBtn(IconData icon, String label, VoidCallback onTap, Color color, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _isBusy ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isDark ? color.withValues(alpha: 0.15) : Colors.white,
+          foregroundColor: color,
+          elevation: 0,
+          side: BorderSide(color: color.withValues(alpha: 0.2)),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 22),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNutritionDashboard(bool isDark) {
+    final total = _analysisResult?['total'] ?? {};
+    return Column(
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _isAnalyzing ? null : _pickImage,
-            icon: const Icon(Icons.photo_library),
-            label: const Text('Pick Image'),
-          ),
+        Row(
+          children: [
+            Expanded(child: _macroBox('Calories', '${total['ENERGY (Kcal)']} kcal', Colors.orange, isDark)),
+            const SizedBox(width: 8),
+            Expanded(child: _macroBox('Protein', '${total['PROTEIN (g)']}g', Colors.redAccent, isDark)),
+            const SizedBox(width: 8),
+            Expanded(child: _macroBox('Carbs', '${total['CARBOHYDRATE (g)']}g', Colors.blue, isDark)),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: _isAnalyzing ? null : _analyzeImage,
-            icon: const Icon(Icons.analytics),
-            label: const Text('Analyze'),
-          ),
-        ),
+        const SizedBox(height: 16),
+        _detailRow('Fat', '${total['FAT (g)']} g', isDark),
+        _detailRow('Water', '${total['WATER (g)']} g', isDark),
+        _detailRow('Fiber', '${total['FIBER (g)']} g', isDark),
+        _detailRow('Sodium', '${total['SODIUM (mg)']} mg', isDark),
+        _detailRow('Calcium', '${total['CALCIUM (mg)']} mg', isDark),
+        _detailRow('Iron', '${total['IRON (mg)']} mg', isDark),
+        _detailRow('Ash', '${total['ASH (g)']} g', isDark),
       ],
     );
   }
 
-  Widget _buildResultsCard(bool isDark) {
+  Widget _macroBox(String label, String val, Color color, bool isDark) {
     return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161B22) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.white12 : Colors.grey[300]!,
-        ),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      decoration: AppTheme.cardDeco(isDark).copyWith(
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
-      padding: const EdgeInsets.all(12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_ingredients != null) ...[
-            const Text(
-              'Ingredients (from image):',
-              style: TextStyle(fontWeight: FontWeight.bold),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              val, 
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color)
             ),
-            const SizedBox(height: 6),
-            Text(
-              _ingredients!,
-              style: TextStyle(
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (_nutrition != null) ...[
-            const Text(
-              'Key Nutrition (estimated):',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _macroChips(isDark),
-            ),
-          ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label.toUpperCase(), 
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.sub(isDark), letterSpacing: 0.5)
+          ),
         ],
       ),
     );
   }
 
-  List<Widget> _macroChips(bool isDark) {
-    final n = _nutrition;
-    if (n == null) return [];
-
-    Widget chip(String label, double? value, String unit) {
-      return Chip(
-        label: Text('$label: ${value?.toStringAsFixed(1) ?? '-'} $unit'),
-        backgroundColor: isDark ? Colors.white12 : Colors.grey[100],
-      );
-    }
-
-    return [
-      chip('Calories', n.calories, 'kcal'),
-      chip('Protein', n.protein, 'g'),
-      chip('Carbs', n.carbs, 'g'),
-      chip('Fat', n.fat, 'g'),
-      chip('Fiber', n.fiber, 'g'),
-      chip('Sodium', n.sodium, 'mg'),
-    ];
+  Widget _detailRow(String label, String val, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: AppTheme.sub(isDark))),
+          Text(val, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
   }
 
   Widget _buildChatSection(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.cardDeco(isDark),
+      child: Column(
+        children: [
+          if (_messages.isNotEmpty) ...[
+            ..._messages.map((m) => _chatBubble(m, isDark)),
+            const SizedBox(height: 16),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatController,
+                  decoration: const InputDecoration(hintText: 'Ask about this meal...', border: InputBorder.none),
+                  onSubmitted: (_) => _sendChat(),
+                ),
+              ),
+              IconButton(onPressed: _sendChat, icon: const Icon(Icons.send_rounded, color: AppTheme.cyan)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chatBubble(_ChatMsg m, bool isDark) {
+    final isUser = m.role == _Role.user;
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isUser ? AppTheme.cyan.withValues(alpha: 0.1) : (isDark ? Colors.white10 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: isUser 
+          ? Text(m.text, style: TextStyle(color: AppTheme.text(isDark)))
+          : MarkdownBody(
+              data: m.text,
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(color: AppTheme.text(isDark), fontSize: 14),
+                strong: TextStyle(color: AppTheme.text(isDark), fontWeight: FontWeight.bold),
+                listBullet: TextStyle(color: AppTheme.cyan),
+              ),
+            ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, bool isDark) => Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.text(isDark)));
+
+  final _chatController = TextEditingController();
+  final List<_ChatMsg> _messages = [];
+
+  Future<void> _sendChat() async {
+    final text = _chatController.text.trim();
+    if (text.isEmpty || _analysisResult == null) return;
+    final userMsg = _ChatMsg(role: _Role.user, text: text);
+    setState(() {
+      _messages.add(userMsg);
+      _chatController.clear();
+      _isBusy = true;
+    });
+    _saveChatMessage(userMsg);
+
+    try {
+      final reply = await sqlNutritionService.chat(text, _analysisResult!);
+      final botMsg = _ChatMsg(role: _Role.bot, text: reply);
+      setState(() => _messages.add(botMsg));
+      _saveChatMessage(botMsg);
+    } catch (e) {
+      setState(() => _error = 'Chat error: $e');
+    } finally {
+      setState(() => _isBusy = false);
+    }
+  }
+
+  Future<void> _saveChatMessage(_ChatMsg msg) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _activeSessionId == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(user.uid)
+          .collection('NutritionHistory')
+          .doc(_activeSessionId)
+          .collection('Chat')
+          .add({
+        'role': msg.role == _Role.user ? 'user' : 'bot',
+        'text': msg.text,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error saving nutrition chat: $e');
+    }
+  }
+
+  Widget _primaryBtn(String label, VoidCallback onTap, bool isDark) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _isBusy ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.cyan,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 2,
+        ),
+        child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+}
+
+class _NutritionResultSheet extends StatelessWidget {
+  final Map<String, dynamic> total;
+  const _NutritionResultSheet({required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = globalThemeProvider.isDarkMode;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.bg(isDark),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 24),
+          const Text('Analysis Summary', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 24),
+          _buildNutrientRow('Energy', '${total['ENERGY (Kcal)']} kcal', Icons.bolt, Colors.orange),
+          _buildNutrientRow('Protein', '${total['PROTEIN (g)']} g', Icons.fitness_center, Colors.red),
+          _buildNutrientRow('Carbs', '${total['CARBOHYDRATE (g)']} g', Icons.bakery_dining, Colors.blue),
+          _buildNutrientRow('Fats', '${total['FAT (g)']} g', Icons.opacity, Colors.orangeAccent),
+          const Divider(height: 32),
+          GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 2,
+            childAspectRatio: 3,
+            children: [
+              _miniNutrient('Fiber', '${total['FIBER (g)']}g'),
+              _miniNutrient('Sodium', '${total['SODIUM (mg)']}mg'),
+              _miniNutrient('Calcium', '${total['CALCIUM (mg)']}mg'),
+              _miniNutrient('Iron', '${total['IRON (mg)']}mg'),
+            ],
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.cyan, minimumSize: const Size(double.infinity, 50)),
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNutrientRow(String label, String val, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(fontSize: 16)),
+          const Spacer(),
+          Text(val, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniNutrient(String label, String val) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Nutrition Chatbot',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          constraints: const BoxConstraints(minHeight: 120, maxHeight: 320),
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF161B22) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? Colors.white12 : Colors.grey[300]!,
-            ),
-          ),
-          child: _messages.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Analyze an image, then ask questions about the meal. You can ask about macros, diet suitability, or healthier swaps.',
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black87,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = _messages[index];
-                    final isUser = msg.role == MessageRole.user;
-                    return Align(
-                      alignment:
-                          isUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isUser
-                              ? Colors.teal.withOpacity(0.15)
-                              : (isDark ? Colors.white10 : Colors.grey[200]),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          msg.text,
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                decoration: const InputDecoration(
-                  hintText: 'Ask about nutrition... ',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                ),
-                minLines: 1,
-                maxLines: 4,
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _isSending ? null : _sendMessage,
-              icon: _isSending
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send, size: 18),
-              label: const Text('Send'),
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              ),
-            ),
-          ],
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(val, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
       ],
     );
   }
 }
 
-enum MessageRole { user, assistant }
+enum _Role { user, bot }
 
-class _ChatMessage {
-  final MessageRole role;
+class _ChatMsg {
+  final _Role role;
   final String text;
-  _ChatMessage({required this.role, required this.text});
+  _ChatMsg({required this.role, required this.text});
+}
+
+class _NutritionHistoryScreen extends StatelessWidget {
+  const _NutritionHistoryScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final isDark = globalThemeProvider.isDarkMode;
+    
+    return Scaffold(
+      backgroundColor: AppTheme.bg(isDark),
+      appBar: AppBar(
+        title: const Text('Nutrition History'),
+        backgroundColor: AppTheme.card(isDark),
+        foregroundColor: AppTheme.text(isDark),
+      ),
+      body: user == null
+          ? const Center(child: Text('Please log in'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('patients')
+                  .doc(user.uid)
+                  .collection('NutritionHistory')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (snapshot.data!.docs.isEmpty) return const Center(child: Text('No history found'));
+                
+                return ListView.builder(
+                  itemCount: snapshot.data!.docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = snapshot.data!.docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final ts = data['timestamp'] as Timestamp?;
+                    final date = ts?.toDate() ?? DateTime.now();
+                    final calories = data['total']?['ENERGY (Kcal)'] ?? 0;
+                    
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        leading: const CircleAvatar(backgroundColor: AppTheme.cyan, child: Icon(Icons.restaurant, color: Colors.white)),
+                        title: Text('Meal on ${date.day}/${date.month} at ${date.hour}:${date.minute}'),
+                        subtitle: Text('$calories kcal · ${data['ingredients']?.length ?? 0} items'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          // Show a summary dialog or similar
+                          showModalBottomSheet(
+                            context: context,
+                            builder: (_) => _NutritionResultSheet(total: data['total']),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
 }

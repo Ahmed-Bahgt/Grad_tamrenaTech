@@ -1,0 +1,34 @@
+.git
+.dart_tool
+.idea
+.vscode
+build/
+android/
+ios/
+linux/
+macos/
+windows/
+web/
+lib/
+test/
+pubspec.*
+*.apk
+*.aab
+computer vision trainer module/
+
+# Python ignores
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Database and Temp files (should not be in the image)
+custom_backend/tamren_tech.db
+custom_backend/temp/
+custom_backend/temp_charts/
+custom_backend/scratch/
+radilogy repoprt generation/rehab_system/temp/
+
+# Log files
+*.log

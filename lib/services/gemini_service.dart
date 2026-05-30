@@ -1,104 +1,72 @@
 import 'dart:io';
-
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:crypto/crypto.dart';
 import '../utils/api_config.dart';
 
 class GeminiService {
-  late final GenerativeModel _model;
+  GenerativeModel? _modelInstance;
 
-  /// Cache for ingredient extractions to avoid quota waste
-  final Map<String, String> _ingredientCache = {};
-
-  GeminiService() {
-    _model = GenerativeModel(
-      model: ApiConfig.geminiModel,
-      apiKey: ApiConfig.geminiApiKey,
-    );
+  GenerativeModel get _model {
+    if (_modelInstance == null) {
+      final key = ApiConfig.geminiApiKey.trim();
+      if (key == 'PASTE_YOUR_REAL_KEY_HERE' || key.isEmpty) {
+        throw Exception('Please paste your real Gemini API Key in lib/utils/api_config.dart');
+      }
+      _modelInstance = GenerativeModel(
+        model: ApiConfig.geminiModel,
+        apiKey: key,
+      );
+    }
+    return _modelInstance!;
   }
+
+  final Map<String, String> _ingredientCache = {};
+  GeminiService();
 
   String _generateImageHash(Uint8List imageBytes) {
     return md5.convert(imageBytes).toString();
-  }
-
-  Future<String> extractIngredientsFromImage(Uint8List imageBytes) async {
-    try {
-      final hash = _generateImageHash(imageBytes);
-      if (_ingredientCache.containsKey(hash)) {
-        debugPrint('[GeminiService] ✓ Using cached ingredients for hash: $hash');
-        return _ingredientCache[hash]!;
-      }
-
-      const prompt =
-          '''You are a precise food-analysis assistant. Inspect the image and return a single-line,
-comma-separated list of ingredients **with approximate quantities suitable for Edamam Nutrition API**.
-Example output: '1 cup rice, 100g chicken breast, 1 tbsp olive oil'.
-Return ONLY the ingredient list.''';
-
-      final content = Content.multi([
-        TextPart(prompt),
-        DataPart('image/jpeg', imageBytes),
-      ]);
-
-      final response = await _retryWithBackoff(() async {
-        return await _model.generateContent([content]);
-      });
-
-      final text = response.text?.trim() ?? '';
-      final cleaned = text.replaceAll(
-        RegExp(r"""^['"]+|['"]+$"""),
-        '',
-      ).trim();
-
-      _ingredientCache[hash] = cleaned;
-      return cleaned;
-    } catch (e) {
-      throw Exception('Failed to extract ingredients: $e');
-    }
   }
 
   Future<String> extractIngredientsFromImageFile(File file) async {
     try {
       final imageBytes = await file.readAsBytes();
       final hash = _generateImageHash(imageBytes);
-      if (_ingredientCache.containsKey(hash)) {
-        debugPrint('[GeminiService] ✓ Using cached ingredients for file: ${file.path}');
-        return _ingredientCache[hash]!;
-      }
+      
+      // DISABLED CACHE LOOKUP FOR TESTING PROMPT CHANGES
+      // if (_ingredientCache.containsKey(hash)) return _ingredientCache[hash]!;
 
-      final path = file.path.toLowerCase();
-      final mime = path.endsWith('.png')
-          ? 'image/png'
-          : path.endsWith('.webp')
-              ? 'image/webp'
-              : 'image/jpeg';
+      const prompt = '''Analyze this food image and identify all ingredients with precise volume estimation.
+Format: [quantity] [unit] [food_name]
 
-      const prompt =
-          '''You are a precise food-analysis assistant. Inspect the image and return a single-line,
-comma-separated list of ingredients **with approximate quantities suitable for Edamam Nutrition API**.
-Example output: '1 cup rice, 100g chicken breast, 1 tbsp olive oil'.
-Return ONLY the ingredient list.''';
+CRITICAL RULES:
+1. ALWAYS use digits for quantity (e.g., 0.25, 1.5, 2). NEVER use words like "a", "half", or "some".
+2. Proportions: Base ingredients (rice/pasta/meat) should be larger (1-2 cups or 150g). Toppings/Garnishes (onions/sauces) should be small (0.1 to 0.25 cup).
+3. Units: Use "cups" for rice/grains, "g" for meat, and "tbsp" for oils/small toppings.
 
-      final content = Content.multi([
-        TextPart(prompt),
-        DataPart(mime, imageBytes),
-      ]);
+Examples:
+1.25 cups white rice
+180 g grilled chicken
+0.15 cup fried onions
+2 tbsp tomato sauce
 
-      final response = await _retryWithBackoff(() async {
-        return await _model.generateContent([content]);
-      });
+Return ONLY the plain list.''';
 
+      final content = [
+        Content.multi([
+          TextPart(prompt),
+          DataPart('image/jpeg', imageBytes),
+        ])
+      ];
+
+      final response = await _model.generateContent(content);
       final text = response.text?.trim() ?? '';
-      final cleaned = text.replaceAll(
-        RegExp(r"""^['"]+|['"]+$"""),
-        '',
-      ).trim();
-
-      _ingredientCache[hash] = cleaned;
-      return cleaned;
+      
+      // Cache the result for future use (once prompt is stable)
+      _ingredientCache[hash] = text;
+      return text;
     } catch (e) {
-      throw Exception('Failed to extract ingredients: $e');
+      throw Exception('Gemini Error: $e');
     }
   }
 
@@ -108,46 +76,18 @@ Return ONLY the ingredient list.''';
 
   Future<String> sendChatMessage(ChatSession chat, String message) async {
     try {
-      final response = await _retryWithBackoff(() async {
-        return await chat.sendMessage(Content.text(message));
-      });
-
-      final text = response.text;
-      if (text == null || text.isEmpty) {
-        throw Exception('Empty response from Gemini API');
-      }
-      return text;
-    } on Exception catch (e) {
-      final errorMsg = e.toString();
-      if (errorMsg.contains('429') || errorMsg.contains('RESOURCE_EXHAUSTED')) {
-        throw Exception('API quota exceeded: $e');
-      }
-      rethrow;
+      final response = await chat.sendMessage(Content.text(message));
+      return response.text ?? 'No response';
     } catch (e) {
       throw Exception('Chat error: $e');
     }
   }
-
-  Future<T> _retryWithBackoff<T>(Future<T> Function() operation) async {
-    int attempt = 0;
-    const maxRetries = 3;
-    while (true) {
-      try {
-        return await operation();
-      } catch (e) {
-        attempt++;
-        final errorMsg = e.toString();
-        final isQuotaError = errorMsg.contains('429') ||
-            errorMsg.contains('RESOURCE_EXHAUSTED') ||
-            errorMsg.contains('quota') ||
-            errorMsg.contains('quota exceeded for metric');
-        if (!isQuotaError || attempt >= maxRetries) {
-          rethrow;
-        }
-        final delaySeconds = 1 << (attempt - 1);
-        debugPrint('[GeminiService] ⏳ Quota exceeded. Retrying in ${delaySeconds}s (attempt $attempt/$maxRetries)...');
-        await Future.delayed(Duration(seconds: delaySeconds));
-      }
+  Future<String> generateText(String prompt) async {
+    try {
+      final response = await _model.generateContent([Content.text(prompt)]);
+      return response.text ?? '';
+    } catch (e) {
+      return '';
     }
   }
 }

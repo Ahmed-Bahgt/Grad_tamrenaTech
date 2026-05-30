@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/sql_service.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/responsive_utils.dart';
 
@@ -87,6 +88,21 @@ class _PatientRegistrationFlowPageState extends State<PatientRegistrationFlowPag
       );
 
       debugPrint('🔥 Firebase: ✅ Registration complete');
+
+      // --- SYNC TO SQL BACKEND ---
+      try {
+        final sqlService = SqlService();
+        await sqlService.syncUser(
+          uid: userCredential.user!.uid,
+          email: _emailCtrl.text.trim(),
+          fullName: '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim(),
+          phone: '',
+          role: 'patient',
+        );
+        debugPrint('✅ SQL: Patient synced to PostgreSQL');
+      } catch (sqlError) {
+        debugPrint('⚠️ SQL: Patient sync failed - $sqlError');
+      }
 
       if (!mounted) return;
       _showSnack(t('Registration successful! Please verify your email.', 'تم التسجيل بنجاح! يرجى تأكيد بريدك الإلكتروني.'));

@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/sql_service.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/responsive_utils.dart';
 
@@ -94,7 +95,7 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       lastDate: DateTime(now.year + 1),
     );
     if (picked != null) {
-      _gradDateCtrl.text = '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      _gradDateCtrl.text = '${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}';
       setState(() {});
     }
   }
@@ -213,7 +214,8 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       _showSnack(t('Please complete primary info correctly.', 'يرجى إكمال المعلومات الأساسية بشكل صحيح.'));
       return;
     }
-    if (_gradDateCtrl.text.trim().isEmpty || _certificateFile == null) {
+    if (_gradDateCtrl.text.trim().isEmpty ||
+        (_certificateUploadedUrl == null && _certificateFile == null)) {
       _showSnack(t('Provide graduation date and certificate.', 'أدخل تاريخ التخرج وحمّل الشهادة.'));
       return;
     }
@@ -299,6 +301,21 @@ class _DoctorRegistrationFlowPageState extends State<DoctorRegistrationFlowPage>
       }
 
       debugPrint('🔥 Firebase: ✅ Registration complete');
+
+      // --- SYNC TO SQL BACKEND ---
+      try {
+        final sqlService = SqlService();
+        await sqlService.syncUser(
+          uid: userCredential.user!.uid,
+          email: _emailCtrl.text.trim(),
+          fullName: '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim(),
+          phone: '',
+          role: 'doctor',
+        );
+        debugPrint('✅ SQL: Doctor synced to PostgreSQL');
+      } catch (sqlError) {
+        debugPrint('⚠️ SQL: Doctor sync failed - $sqlError');
+      }
 
       if (!mounted) return;
       final baseMsg = t('Registration successful! Please verify your email.', 'تم التسجيل بنجاح! يرجى تأكيد بريدك الإلكتروني.');
@@ -569,7 +586,7 @@ class _GraduationScreen extends StatelessWidget {
             height: ResponsiveUtils.height(context) * 0.2,
             width: double.infinity,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+              color: isDark ? AppTheme.card(isDark) : AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: certificateFile != null ? Colors.green : (isDark ? Colors.white24 : Colors.grey[300]!)),
             ),
@@ -785,7 +802,7 @@ class _ProgressHeader extends StatelessWidget {
     ];
 
     final progress = (currentIndex + 1) / 3.0;
-    final bg = isDark ? const Color(0xFF0D1117) : Colors.white;
+    final bg = AppTheme.bg(isDark);
     final barColor = isDark ? const Color(0xFF00E5FF) : const Color(0xFF00BCD4);
     final muted = isDark ? Colors.white24 : Colors.black12;
 
@@ -813,7 +830,7 @@ class _ProgressHeader extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: active
-                              ? (isDark ? Colors.white : Colors.black87)
+                              ? (AppTheme.text(isDark))
                               : (isDark ? Colors.white54 : Colors.black45),
                         ),
                       ),

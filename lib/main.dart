@@ -3,16 +3,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'utils/theme_provider.dart';
+import 'utils/dev_mode_service.dart';
 import 'screens/common/welcome_screen.dart';
 import 'screens/common/role_selection_screen.dart';
 import 'screens/auth/doctor_registration_flow.dart';
 import 'screens/auth/patient_registration_flow.dart';
 import 'screens/auth/doctor_login_screen.dart';
 import 'screens/auth/patient_login_screen.dart';
+import 'screens/auth/admin_login_screen.dart';
 import 'screens/auth/verification_screen.dart';
 import 'screens/auth/success_screen.dart';
 import 'screens/doctor/doctor_dashboard.dart';
+import 'screens/doctor/doctor_pending_verification_screen.dart';
 import 'screens/patient/patient_dashboard.dart';
+import 'screens/admin/admin_dashboard.dart';
 import 'screens/common/settings_screen.dart';
 
 // --- ENUM FOR NAVIGATION ---
@@ -29,6 +33,9 @@ enum Screen {
   doctorDashboard,
   patientDashboard,
   settings,
+  doctorPendingVerification,
+  adminLogin,
+  adminDashboard,
 }
 
 Future<void> main() async {
@@ -65,39 +72,8 @@ class _TamrenaAppState extends State<TamrenaApp> {
     );
   }
 
-  ThemeData _buildLightTheme() {
-    return ThemeData(
-      brightness: Brightness.light,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF00BCD4),
-        brightness: Brightness.light,
-      ),
-      scaffoldBackgroundColor: const Color(0xFFFAFBFC),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
-      ),
-      useMaterial3: true,
-    );
-  }
-
-  ThemeData _buildDarkTheme() {
-    return ThemeData(
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF00E5FF),
-        brightness: Brightness.dark,
-      ),
-      scaffoldBackgroundColor: const Color(0xFF0D1117),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF0D1117),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      useMaterial3: true,
-    );
-  }
+  ThemeData _buildLightTheme() => AppTheme.light();
+  ThemeData _buildDarkTheme()  => AppTheme.dark();
 }
 
 class MainScreen extends StatefulWidget {
@@ -112,6 +88,33 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   Screen _currentScreen = Screen.welcome;
   Screen? _previousScreen;
+
+  Future<void> _routeAuthenticatedUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await widget.themeProvider.loadUserProfile();
+    if (!mounted) return;
+
+    setState(() {
+      switch (widget.themeProvider.userRole) {
+        case 'admin':
+          _currentScreen = Screen.adminDashboard;
+          break;
+        case 'doctor':
+          _currentScreen = Screen.doctorDashboard;
+          break;
+        case 'doctor_pending':
+          _currentScreen = Screen.doctorPendingVerification;
+          break;
+        case 'patient':
+          _currentScreen = Screen.patientDashboard;
+          break;
+        default:
+          _currentScreen = Screen.welcome;
+      }
+    });
+  }
 
   void navigateTo(Screen screen) {
     setState(() {
@@ -148,6 +151,15 @@ class _MainScreenState extends State<MainScreen> {
           onCreateAccount: () => navigateTo(Screen.roleSelection),
           onLoginDoctor: () => navigateTo(Screen.doctorLogin),
           onLoginPatient: () => navigateTo(Screen.patientLogin),
+          onLoginAdmin: () => navigateTo(Screen.adminLogin),
+          onTestMode: (role) {
+            DevModeService().activate(role);
+            switch (role) {
+              case 'doctor': navigateTo(Screen.doctorDashboard); break;
+              case 'patient': navigateTo(Screen.patientDashboard); break;
+              case 'admin': navigateTo(Screen.adminDashboard); break;
+            }
+          },
         );
       case Screen.roleSelection:
         return RoleSelectionScreen(
@@ -171,12 +183,18 @@ class _MainScreenState extends State<MainScreen> {
           onBack: () => navigateTo(Screen.welcome),
           onRegister: () => navigateTo(Screen.doctorRegister),
           onLoginSuccess: () => navigateTo(Screen.doctorDashboard),
+          onPendingVerification: () => navigateTo(Screen.doctorPendingVerification),
         );
       case Screen.patientLogin:
         return PatientLoginScreen(
           onBack: () => navigateTo(Screen.welcome),
           onRegister: () => navigateTo(Screen.patientRegister),
           onLoginSuccess: () => navigateTo(Screen.patientDashboard),
+        );
+      case Screen.adminLogin:
+        return AdminLoginScreen(
+          onBack: () => navigateTo(Screen.welcome),
+          onLoginSuccess: () => navigateTo(Screen.adminDashboard),
         );
       case Screen.verification:
         return VerificationScreen(
@@ -205,12 +223,22 @@ class _MainScreenState extends State<MainScreen> {
           themeProvider: widget.themeProvider,
           onBackToWelcome: _handleLogout,
         );
+      case Screen.doctorPendingVerification:
+        return DoctorPendingVerificationScreen(
+          onLogout: () => navigateTo(Screen.welcome),
+          onApproved: () => navigateTo(Screen.doctorDashboard),
+        );
       case Screen.patientDashboard:
         return PatientDashboard(
           onLogout: _handleLogout,
           onSettings: () => navigateTo(Screen.settings),
           themeProvider: widget.themeProvider,
           onBackToWelcome: _handleLogout,
+        );
+      case Screen.adminDashboard:
+        return AdminDashboard(
+          onLogout: _handleLogout,
+          themeProvider: widget.themeProvider,
         );
       case Screen.settings:
         return SettingsScreen(
@@ -223,5 +251,6 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    _routeAuthenticatedUser();
   }
 }

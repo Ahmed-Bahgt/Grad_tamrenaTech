@@ -139,11 +139,10 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
       timeTo: _selectedTimeTo!,
     );
 
-    if (_editingIndex != null) {
-      // Update existing slot
+    final wasEditing = _editingIndex != null;
+    if (wasEditing) {
       _manager.updateSlot(_editingIndex!, slot);
     } else {
-      // Add new slot
       _manager.addSlot(slot);
     }
 
@@ -157,7 +156,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_editingIndex != null
+        content: Text(wasEditing
             ? t('Slot updated successfully', 'تم تحديث الموعد بنجاح')
             : t('Slot added successfully', 'تمت إضافة الموعد بنجاح')),
         backgroundColor: Colors.green,
@@ -221,22 +220,24 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
         title: t('Set Availability', 'تعيين التوفر'),
         onBack: widget.onBack,
       ),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                _editingIndex != null
-                    ? t('Edit Availability Slot', 'تعديل موعد متاح')
-                    : t('Add Availability Slot', 'إضافة موعد متاح'),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
+              Expanded(
+                child: Text(
+                  _editingIndex != null
+                      ? t('Edit Availability Slot', 'تعديل موعد متاح')
+                      : t('Add Availability Slot', 'إضافة موعد متاح'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.text(isDark),
+                  ),
                 ),
               ),
               if (_editingIndex != null)
@@ -256,10 +257,10 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.white,
+              color: AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: isDark ? Colors.white12 : Colors.grey[300]!),
+                  color: AppTheme.border(isDark)),
             ),
             child: Column(
               children: [
@@ -271,7 +272,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                         vertical: 14, horizontal: 12),
                     decoration: BoxDecoration(
                       color:
-                          isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                          AppTheme.bg(isDark),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: const Color(0xFF00BCD4)),
                     ),
@@ -286,7 +287,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                                 ? _formatDate(_selectedDate!)
                                 : t('Select Date', 'اختر التاريخ'),
                             style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
+                              color: AppTheme.text(isDark),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -307,7 +308,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                             t('From', 'من'),
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.white60 : Colors.black54,
+                              color: AppTheme.sub(isDark),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -319,8 +320,8 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                                   vertical: 14, horizontal: 12),
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? const Color(0xFF0D1117)
-                                    : Colors.grey[100],
+                                    ? AppTheme.bg(isDark)
+                                    : AppTheme.card(isDark),
                                 borderRadius: BorderRadius.circular(8),
                                 border:
                                     Border.all(color: const Color(0xFF00BCD4)),
@@ -360,7 +361,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                             t('To', 'إلى'),
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.white60 : Colors.black54,
+                              color: AppTheme.sub(isDark),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -372,11 +373,11 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                                   vertical: 14, horizontal: 12),
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? const Color(0xFF0D1117)
-                                    : Colors.grey[100],
+                                    ? AppTheme.bg(isDark)
+                                    : AppTheme.card(isDark),
                                 borderRadius: BorderRadius.circular(8),
                                 border:
-                                    Border.all(color: const Color(0xFF8BC34A)),
+                                    Border.all(color: AppTheme.cyan),
                               ),
                               child: Row(
                                 children: [
@@ -416,9 +417,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                         ? t('Save Changes', 'حفظ التغييرات')
                         : t('Add Slot', 'إضافة موعد')),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _editingIndex != null
-                        ? (isDark ? const Color(0xFF29B6F6) : const Color(0xFF8BC34A))
-                        : const Color(0xFF00BCD4),
+                      backgroundColor: AppTheme.cyan,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -436,7 +435,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
+              color: AppTheme.text(isDark),
             ),
           ),
           const SizedBox(height: 12),
@@ -446,7 +445,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
             Container(
               padding: const EdgeInsets.all(40),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+                color: AppTheme.card(isDark),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -458,7 +457,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                   Text(
                     t('No availability slots yet', 'لا توجد مواعيد متاحة بعد'),
                     style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black54),
+                        color: AppTheme.sub(isDark)),
                   ),
                 ],
               ),
@@ -470,10 +469,10 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF161B22) : Colors.white,
+                  color: AppTheme.card(isDark),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                      color: isDark ? Colors.white12 : Colors.grey[300]!),
+                      color: AppTheme.border(isDark)),
                 ),
                 child: Row(
                   children: [
@@ -496,7 +495,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
-                              color: isDark ? Colors.white : Colors.black87,
+                              color: AppTheme.text(isDark),
                             ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
@@ -507,7 +506,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                               Icon(Icons.access_time,
                                   size: 14,
                                   color:
-                                      isDark ? Colors.white60 : Colors.black54),
+                                      AppTheme.sub(isDark)),
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
@@ -515,7 +514,7 @@ class _SetAvailabilityScreenState extends State<SetAvailabilityScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     color:
-                                        isDark ? Colors.white60 : Colors.black54,
+                                        AppTheme.sub(isDark),
                                     fontWeight: FontWeight.w500,
                                   ),
                                   overflow: TextOverflow.ellipsis,

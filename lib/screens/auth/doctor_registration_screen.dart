@@ -55,7 +55,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
     final padding = ResponsiveUtils.padding(context, 24);
     final spacing = ResponsiveUtils.spacing(context, 30);
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: CustomAppBar(
         title: t('Doctor Registration - Step ${currentStep + 1} of 3',
             'تسجيل الطبيب - الخطوة ${currentStep + 1} من 3'),
@@ -134,7 +134,7 @@ class Step1PrimaryInfo extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(t('Enter your primary account details.', 'أدخل تفاصيل حسابك الأساسية'),
-            style: TextStyle(fontSize: fontSize, color: isDark ? Colors.white70 : Colors.black54)),
+            style: TextStyle(fontSize: fontSize, color: AppTheme.sub(isDark))),
         SizedBox(height: spacing),
         Row(
           children: [
@@ -278,7 +278,7 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(t('Primary Qualification Details', 'تفاصيل المؤهل الأساسي'),
-            style: TextStyle(fontSize: fontSize, color: isDark ? Colors.white70 : Colors.black54)),
+            style: TextStyle(fontSize: fontSize, color: AppTheme.sub(isDark))),
         SizedBox(height: spacing),
         CustomFormField(t('University Name', 'اسم الجامعة')),
         Padding(
@@ -290,7 +290,7 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
             decoration: InputDecoration(
               labelText: t('Graduation Date', 'تاريخ التخرج'),
               suffixIcon: const Icon(Icons.calendar_today),
-              labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              labelStyle: TextStyle(color: AppTheme.sub(isDark)),
             ),
             style: TextStyle(color: isDark ? const Color(0xFFDEE2E6) : Colors.black87),
           ),
@@ -305,7 +305,7 @@ class _Step2PrimaryQualificationState extends State<Step2PrimaryQualification> {
             height: 150,
             width: double.infinity,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+              color: isDark ? AppTheme.card(isDark) : AppTheme.card(isDark),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _certificateImage != null
@@ -482,7 +482,7 @@ class _Step3AdditionalQualificationState
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161B22) : Colors.white,
+        color: AppTheme.card(isDark),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
       ),
@@ -492,11 +492,14 @@ class _Step3AdditionalQualificationState
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${t('Qualification ', 'المؤهل ')}${index + 1}',
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF8BC34A))),
+              Expanded(
+                child: Text('${t('Qualification ', 'المؤهل ')}${index + 1}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8BC34A))),
+              ),
               if (qualifications.length > 1)
                 IconButton(
                   icon: const Icon(Icons.delete_forever_rounded,
@@ -518,7 +521,7 @@ class _Step3AdditionalQualificationState
               height: 120,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0D1117) : Colors.grey[100],
+                color: isDark ? AppTheme.bg(isDark) : AppTheme.card(isDark),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: certificateImages[id] != null
@@ -568,7 +571,7 @@ class _Step3AdditionalQualificationState
       children: [
         Text(t('Add any additional professional degrees or diplomas.',
             'أضف أي درجات أو شهادات مهنية إضافية'),
-            style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black54)),
+            style: TextStyle(fontSize: 16, color: AppTheme.sub(isDark))),
         const SizedBox(height: 20),
         ...qualifications.asMap().entries.map((entry) {
           int index = entry.key;

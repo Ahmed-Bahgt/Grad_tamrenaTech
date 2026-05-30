@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.tamren_tech"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -17,12 +17,13 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
+        freeCompilerArgs += listOf()
     }
 
     defaultConfig {
         applicationId = "com.example.tamren_tech"
         minSdk = flutter.minSdkVersion 
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

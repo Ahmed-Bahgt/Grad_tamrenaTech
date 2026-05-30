@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'theme_provider.dart';
+import '../services/sql_service.dart';
 
 /// Singleton class to manage availability slots across screens
 class AvailabilityManager implements Listenable {
@@ -18,6 +20,7 @@ class AvailabilityManager implements Listenable {
     _listenToBookedAppointments();
     // React to auth changes to keep slots scoped to the signed-in doctor
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (appDevMode) return;
       if (user == null) {
         // Signed out: clear any cached slots and counters
         _slots.clear();
@@ -56,6 +59,24 @@ class AvailabilityManager implements Listenable {
     _listeners.add(listener);
   }
 
+  /// Seed in-memory data for dev/test mode (no Firebase needed)
+  void loadDevModeData({
+    required List<AvailabilitySlot> slots,
+    required List<BookedAppointment> bookedAppointments,
+    required int bookedCount,
+  }) {
+    _bookedCountSub?.cancel();
+    _bookedAppointmentsSub?.cancel();
+    _slots
+      ..clear()
+      ..addAll(slots);
+    _bookedAppointments
+      ..clear()
+      ..addAll(bookedAppointments);
+    _bookedCount = bookedCount;
+    _notifyListeners();
+  }
+
   /// Force a manual reload (optional)
   Future<void> refresh() async => _loadSlotsFromFirestore();
 
@@ -79,6 +100,7 @@ class AvailabilityManager implements Listenable {
 
   /// Listen to booked count in real-time for current doctor
   void _listenToBookedCount() {
+    if (appDevMode) return;
     _bookedCountSub?.cancel();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -105,6 +127,7 @@ class AvailabilityManager implements Listenable {
 
   /// Listen to booked appointments in real-time for current doctor
   void _listenToBookedAppointments() {
+    if (appDevMode) return;
     _bookedAppointmentsSub?.cancel();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -170,6 +193,7 @@ class AvailabilityManager implements Listenable {
 
   /// Load booked appointments from Firestore for current doctor
   Future<void> _loadBookedAppointmentsFromFirestore() async {
+    if (appDevMode) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       _bookedAppointments.clear();
@@ -220,10 +244,10 @@ class AvailabilityManager implements Listenable {
       final slots = snapshot.docs.map((doc) {
         final data = doc.data();
         final date = (data['date'] as Timestamp).toDate();
-        final timeFromHour = data['timeFromHour'] as int;
-        final timeFromMinute = data['timeFromMinute'] as int;
-        final timeToHour = data['timeToHour'] as int;
-        final timeToMinute = data['timeToMinute'] as int;
+        final timeFromHour   = (data['timeFromHour']   as num?)?.toInt() ?? 0;
+        final timeFromMinute = (data['timeFromMinute'] as num?)?.toInt() ?? 0;
+        final timeToHour     = (data['timeToHour']     as num?)?.toInt() ?? 0;
+        final timeToMinute   = (data['timeToMinute']   as num?)?.toInt() ?? 0;
         return AvailabilitySlot(
           date: date,
           timeFrom: TimeOfDay(hour: timeFromHour, minute: timeFromMinute),
@@ -362,6 +386,7 @@ class AvailabilityManager implements Listenable {
 
   /// Load slots from Firestore for current doctor
   Future<void> _loadSlotsFromFirestore() async {
+    if (appDevMode) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       debugPrint('[AvailabilityManager] No user logged in, skipping slot load');
@@ -380,10 +405,10 @@ class AvailabilityManager implements Listenable {
       for (final doc in snapshot.docs) {
         final data = doc.data();
         final date = (data['date'] as Timestamp).toDate();
-        final timeFromHour = data['timeFromHour'] as int;
-        final timeFromMinute = data['timeFromMinute'] as int;
-        final timeToHour = data['timeToHour'] as int;
-        final timeToMinute = data['timeToMinute'] as int;
+        final timeFromHour   = (data['timeFromHour']   as num?)?.toInt() ?? 0;
+        final timeFromMinute = (data['timeFromMinute'] as num?)?.toInt() ?? 0;
+        final timeToHour     = (data['timeToHour']     as num?)?.toInt() ?? 0;
+        final timeToMinute   = (data['timeToMinute']   as num?)?.toInt() ?? 0;
 
         _slots.add(AvailabilitySlot(
           date: date,
@@ -401,7 +426,7 @@ class AvailabilityManager implements Listenable {
     }
   }
 
-  /// Save slot to Firestore
+  /// Save slot to Firestore AND sync to SQL backend
   Future<void> _saveSlotsToFirestore() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -432,6 +457,32 @@ class AvailabilityManager implements Listenable {
         });
       }
       debugPrint('[AvailabilityManager] Successfully saved slots to Firestore');
+
+      // --- SYNC TO SQL BACKEND ---
+      try {
+        final sqlService = SqlService();
+        // Delete old non-booked slots for this doctor
+        await sqlService.deleteAllDoctorSlots(user.uid);
+        // Re-create all current slots
+        for (final slot in _slots) {
+          final startTime = DateTime(
+            slot.date.year, slot.date.month, slot.date.day,
+            slot.timeFrom.hour, slot.timeFrom.minute,
+          );
+          final endTime = DateTime(
+            slot.date.year, slot.date.month, slot.date.day,
+            slot.timeTo.hour, slot.timeTo.minute,
+          );
+          await sqlService.createSlot(
+            doctorId: user.uid,
+            startTime: startTime,
+            endTime: endTime,
+          );
+        }
+        debugPrint('✅ SQL: ${_slots.length} slots synced to PostgreSQL');
+      } catch (sqlError) {
+        debugPrint('⚠️ SQL: Slot sync failed - $sqlError');
+      }
     } catch (e) {
       debugPrint('[AvailabilityManager] Error saving slots to Firestore: $e');
     }

@@ -1,10 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../utils/theme_provider.dart';
 import '../../utils/responsive_utils.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_form_field.dart';
+import 'forgot_password_screen.dart';
 
 /// Patient Login Screen
 class PatientLoginScreen extends StatefulWidget {
@@ -26,6 +28,9 @@ class PatientLoginScreen extends StatefulWidget {
 class _PatientLoginScreenState extends State<PatientLoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  static final RegExp _emailRegex = RegExp(
+    r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
+  );
   bool _isLoading = false;
   bool _showPassword = false;
 
@@ -40,8 +45,23 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text;
 
-    if (email.isEmpty || password.isEmpty) {
-      _showSnack(t('Please enter email and password', 'الرجاء إدخال البريد وكلمة المرور'));
+    if (email.isEmpty) {
+      _showSnack(t('Please enter your email.', 'يرجى إدخال البريد الإلكتروني.'));
+      return;
+    }
+
+    if (!_emailRegex.hasMatch(email)) {
+      _showSnack(
+        t(
+          'Enter a valid email format like name@example.com.',
+          'أدخل بريدًا بصيغة صحيحة مثل name@example.com.',
+        ),
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showSnack(t('Please enter your password.', 'يرجى إدخال كلمة المرور.'));
       return;
     }
 
@@ -54,6 +74,25 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
 
       // Load user profile data
       await globalThemeProvider.loadUserProfile();
+
+      // Confirm this account is actually a patient
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final patientDoc = await FirebaseFirestore.instance
+            .collection('patients')
+            .doc(user.uid)
+            .get();
+        if (!patientDoc.exists) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showSnack(t(
+            'This account is not registered as a patient.',
+            'هذا الحساب غير مسجل كمريض.',
+          ));
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
       if (!mounted) return;
       widget.onLoginSuccess();
@@ -84,12 +123,23 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
     );
   }
 
+  Future<void> _openForgotPassword() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(
+          roleTitle: t('Patient', 'المريض'),
+          accentColor: const Color(0xFF8BC34A),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: CustomAppBar(
         title: t('Patient Login', 'تسجيل دخول المريض'),
         onBack: widget.onBack,
@@ -117,7 +167,7 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
                   style: TextStyle(
                     fontSize: ResponsiveUtils.fontSize(context, 28),
                     fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
+                    color: AppTheme.text(isDark),
                   ),
                 ),
                 SizedBox(height: ResponsiveUtils.spacing(context, 10)),
@@ -125,7 +175,7 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
                   t('Login to book appointments', 'تسجيل الدخول لحجز المواعيد'),
                   style: TextStyle(
                     fontSize: ResponsiveUtils.fontSize(context, 16),
-                    color: isDark ? Colors.white60 : Colors.black54,
+                    color: AppTheme.sub(isDark),
                   ),
                 ),
                 SizedBox(height: ResponsiveUtils.verticalSpacing(context, 40)),
@@ -149,6 +199,20 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
                   ),
                   controller: _passwordCtrl,
                 ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _isLoading ? null : _openForgotPassword,
+                    child: Text(
+                      t('Forgot password?', 'هل نسيت كلمة المرور؟'),
+                      style: TextStyle(
+                        color: const Color(0xFF8BC34A),
+                        fontSize: ResponsiveUtils.fontSize(context, 13),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
                 SizedBox(height: ResponsiveUtils.verticalSpacing(context, 30)),
                 SizedBox(
                   height: ResponsiveUtils.buttonHeight(context),
@@ -167,7 +231,7 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
                     Text(
                       t('Don\'t have an account? ', 'ليس لديك حساب؟ '),
                       style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black54,
+                        color: AppTheme.sub(isDark),
                         fontSize: ResponsiveUtils.fontSize(context, 14),
                       ),
                     ),

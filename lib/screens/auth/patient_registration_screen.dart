@@ -22,7 +22,7 @@ class PatientRegistrationScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       appBar: CustomAppBar(
         title: t('Patient Registration', 'تسجيل المريض'),
         onBack: onBack,
@@ -58,7 +58,7 @@ class PatientRegistrationScreen extends StatelessWidget {
               children: [
                 Text(
                   t('Already have an account? ', 'هل لديك حساب بالفعل؟ '),
-                  style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                  style: TextStyle(color: AppTheme.sub(isDark)),
                 ),
                 GestureDetector(
                   onTap: onReturnToLogin,

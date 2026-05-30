@@ -273,7 +273,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(t('Choose your role to continue.', 'اختر دورك للمتابعة.'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+        Text(t('Choose your role to continue.', 'اختر دورك للمتابعة.'), style: TextStyle(color: AppTheme.sub(isDark))),
         const SizedBox(height: 12),
         Wrap(
           spacing: 12,
@@ -332,7 +332,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(t('No extra info needed for patients. Continue to OTP.', 'لا معلومات إضافية مطلوبة للمرضى. تابع إلى رمز التحقق.'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+          Text(t('No extra info needed for patients. Continue to OTP.', 'لا معلومات إضافية مطلوبة للمرضى. تابع إلى رمز التحقق.'), style: TextStyle(color: AppTheme.sub(isDark))),
         ],
       );
     }
@@ -367,7 +367,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
               height: 150,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF161B22) : Colors.grey[100],
+                color: isDark ? AppTheme.card(isDark) : AppTheme.card(isDark),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _certificateFile != null ? Colors.green : (isDark ? Colors.white24 : Colors.grey[300]!)),
               ),
@@ -381,7 +381,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
                       children: [
                         const Icon(Icons.cloud_upload, size: 36, color: Colors.teal),
                         const SizedBox(height: 8),
-                        Text(t('Tap to upload certificate', 'انقر لتحميل الشهادة'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+                        Text(t('Tap to upload certificate', 'انقر لتحميل الشهادة'), style: TextStyle(color: AppTheme.sub(isDark))),
                         const SizedBox(height: 4),
                         Text(t('JPG/PNG, max ~5MB', 'JPG/PNG، بحد أقصى 5MB'), style: TextStyle(color: isDark ? Colors.white38 : Colors.grey[500], fontSize: 12)),
                       ],
@@ -397,7 +397,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(t('We will verify the phone number you entered. A code will be sent to it.', 'سنتحقق من رقم الهاتف الذي أدخلته. سيتم إرسال رمز إليه.'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+        Text(t('We will verify the phone number you entered. A code will be sent to it.', 'سنتحقق من رقم الهاتف الذي أدخلته. سيتم إرسال رمز إليه.'), style: TextStyle(color: AppTheme.sub(isDark))),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -418,7 +418,7 @@ class _MultiStepRegistrationPageState extends State<MultiStepRegistrationPage> {
           ],
         ),
         const SizedBox(height: 8),
-        Text('${t('Phone:', 'الهاتف: ')} ${_phoneCtrl.text}', style: TextStyle(color: isDark ? Colors.white60 : Colors.black54)),
+        Text('${t('Phone:', 'الهاتف: ')} ${_phoneCtrl.text}', style: TextStyle(color: AppTheme.sub(isDark))),
       ],
     );
   }

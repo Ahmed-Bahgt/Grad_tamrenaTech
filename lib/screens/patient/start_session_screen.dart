@@ -6,11 +6,13 @@ import 'session_live_stream_screen.dart';
   /// Start Session Screen - Main hub with 2 tabs for session training
 class StartSessionScreen extends StatefulWidget {
   final String planName;
+  final String? exerciseType; // 'Squat', 'Shoulder Abduction', etc.
   final VoidCallback? onBack;
 
   const StartSessionScreen({
     super.key,
     required this.planName,
+    this.exerciseType,
     this.onBack,
   });
 
@@ -60,7 +62,7 @@ class _StartSessionScreenState extends State<StartSessionScreen>
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: AppTheme.sub(isDark),
               ),
             ),
           ],
@@ -81,13 +83,15 @@ class _StartSessionScreenState extends State<StartSessionScreen>
           ],
         ),
       ),
-      backgroundColor:
-          isDark ? const Color(0xFF0D1117) : const Color(0xFFFAFBFC),
+      backgroundColor: AppTheme.bg(isDark),
       body: TabBarView(
         controller: _tabController,
         children: [
           // Tab 1: Demo
-          SessionDemoScreen(onBack: widget.onBack),
+          SessionDemoScreen(
+            onBack: widget.onBack,
+            exerciseType: widget.exerciseType,
+          ),
 
           // Tab 2: Live Stream
           SessionLiveStreamScreen(onBack: widget.onBack),
